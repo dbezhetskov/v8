@@ -13236,6 +13236,52 @@ UNINITIALIZED_TEST(SharedObjectGetConstructorName) {
   isolate->Dispose();
 }
 
+UNINITIALIZED_TEST(IsolateGroupCreation) {
+  v8::IsolateGroup group1 = v8::IsolateGroup::CreateOrAcquireGlobal();
+  v8::IsolateGroup group2 = v8::IsolateGroup::CreateOrAcquireGlobal();
+
+  const bool only_one_isolate_group = COMPRESS_POINTERS_IN_SHARED_CAGE_BOOL;
+  CHECK_EQ(group1 == group2, only_one_isolate_group);
+
+  v8::Isolate::CreateParams create_params;
+  create_params.array_buffer_allocator = CcTest::array_buffer_allocator();
+
+  // Allocate() can control groups into which isolates are allocated.
+  for (int i = 0; i < 3; i++) {
+    v8::Isolate* isolate1 = v8::Isolate::Allocate(group1);
+    v8::Isolate* isolate1bis = v8::Isolate::Allocate(group1);
+    v8::Isolate* isolate2 = v8::Isolate::Allocate(group2);
+
+    CHECK_EQ(group1, isolate1->GetGroup());
+    CHECK_EQ(group1, isolate1bis->GetGroup());
+    CHECK_EQ(group2, isolate2->GetGroup());
+
+    // Have to initialize before disposing.
+    v8::Isolate::Initialize(isolate1, create_params);
+    v8::Isolate::Initialize(isolate1bis, create_params);
+    v8::Isolate::Initialize(isolate2, create_params);
+
+    isolate1->Dispose();
+    isolate1bis->Dispose();
+    isolate2->Dispose();
+  }
+
+  // New() can control groups into which isolates are allocated.
+  for (int i = 0; i < 3; i++) {
+    v8::Isolate* isolate1 = v8::Isolate::New(group1, create_params);
+    v8::Isolate* isolate1bis = v8::Isolate::New(group1, create_params);
+    v8::Isolate* isolate2 = v8::Isolate::New(group2, create_params);
+
+    CHECK_EQ(group1, isolate1->GetGroup());
+    CHECK_EQ(group1, isolate1bis->GetGroup());
+    CHECK_EQ(group2, isolate2->GetGroup());
+
+    isolate1->Dispose();
+    isolate1bis->Dispose();
+    isolate2->Dispose();
+  }
+}
+
 unsigned ApiTestFuzzer::linear_congruential_generator;
 std::vector<std::unique_ptr<ApiTestFuzzer>> ApiTestFuzzer::fuzzers_;
 bool ApiTestFuzzer::fuzzing_ = false;

@@ -69,6 +69,15 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   // group, the result is nullptr.
   static IsolateGroup* AcquireGlobal();
 
+  // The usual way to use isolate groups is to allow the user to request a new
+  // group, but if we are in a e.g. V8_ENABLE_SANDBOX configuration, to just
+  // return the global group.  In either case the caller owns a reference to the
+  // resulting group and is responsible for eventually releasing it.
+  static IsolateGroup* CreateOrAcquireGlobal() {
+    IsolateGroup* group = AcquireGlobal();
+    return group ? group : New();
+  }
+
   static void InitializeOncePerProcess();
 
   // Obtain a fresh reference on the isolate group.

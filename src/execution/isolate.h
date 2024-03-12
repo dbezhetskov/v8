@@ -634,6 +634,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // Creates Isolate object. Must be used instead of constructing Isolate with
   // new operator.
   static Isolate* New();
+  static Isolate* New(IsolateGroup* isolate_group);
 
   // Deletes Isolate object. Must be used instead of delete operator.
   // Destroys the non-default isolates.
@@ -2229,7 +2230,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   explicit Isolate(IsolateGroup* isolate_group);
   ~Isolate();
 
-  static Isolate* Allocate();
+  static Isolate* Allocate(IsolateGroup* isolate_group);
 
   bool Init(SnapshotData* startup_snapshot_data,
             SnapshotData* read_only_snapshot_data,
