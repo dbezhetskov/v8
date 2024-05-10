@@ -35,14 +35,14 @@ EXTERNAL_POINTER_ACCESSORS_MAYBE_READ_ONLY_HOST(AccessorInfo, setter, Address,
                                                 kSetterOffset,
                                                 kAccessorInfoSetterTag)
 
-Address AccessorInfo::getter(i::IsolateForSandbox isolate) const {
+Address AccessorInfo::getter(i::IsolateForPointerCompression isolate) const {
   Address result = maybe_redirected_getter(isolate);
   if (!USE_SIMULATOR_BOOL) return result;
   if (result == kNullAddress) return kNullAddress;
   return ExternalReference::UnwrapRedirection(result);
 }
 
-void AccessorInfo::init_getter(i::IsolateForSandbox isolate,
+void AccessorInfo::init_getter(i::IsolateForPointerCompression isolate,
                                Address initial_value) {
   init_maybe_redirected_getter(isolate, initial_value);
   if (USE_SIMULATOR_BOOL) {
@@ -50,14 +50,16 @@ void AccessorInfo::init_getter(i::IsolateForSandbox isolate,
   }
 }
 
-void AccessorInfo::set_getter(i::IsolateForSandbox isolate, Address value) {
+void AccessorInfo::set_getter(i::IsolateForPointerCompression isolate,
+                              Address value) {
   set_maybe_redirected_getter(isolate, value);
   if (USE_SIMULATOR_BOOL) {
     init_getter_redirection(isolate);
   }
 }
 
-void AccessorInfo::init_getter_redirection(i::IsolateForSandbox isolate) {
+void AccessorInfo::init_getter_redirection(
+    i::IsolateForPointerCompression isolate) {
   CHECK(USE_SIMULATOR_BOOL);
   Address value = maybe_redirected_getter(isolate);
   if (value == kNullAddress) return;
@@ -66,7 +68,8 @@ void AccessorInfo::init_getter_redirection(i::IsolateForSandbox isolate) {
   set_maybe_redirected_getter(isolate, value);
 }
 
-void AccessorInfo::remove_getter_redirection(i::IsolateForSandbox isolate) {
+void AccessorInfo::remove_getter_redirection(
+    i::IsolateForPointerCompression isolate) {
   CHECK(USE_SIMULATOR_BOOL);
   Address value = getter(isolate);
   set_maybe_redirected_getter(isolate, value);

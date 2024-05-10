@@ -1780,7 +1780,7 @@ void CodeStubAssembler::StoreBoundedSizeToObject(TNode<HeapObject> object,
 #endif  // V8_ENABLE_SANDBOX
 }
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
 TNode<RawPtrT> CodeStubAssembler::ExternalPointerTableAddress(
     ExternalPointerTag tag) {
   if (IsSharedExternalPointerType(tag)) {
@@ -1793,11 +1793,11 @@ TNode<RawPtrT> CodeStubAssembler::ExternalPointerTableAddress(
   return ExternalConstant(
       ExternalReference::external_pointer_table_address(isolate()));
 }
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 
 TNode<RawPtrT> CodeStubAssembler::LoadExternalPointerFromObject(
     TNode<HeapObject> object, TNode<IntPtrT> offset, ExternalPointerTag tag) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   DCHECK_NE(tag, kExternalPointerNullTag);
   TNode<RawPtrT> external_pointer_table_address =
       ExternalPointerTableAddress(tag);
@@ -1821,14 +1821,14 @@ TNode<RawPtrT> CodeStubAssembler::LoadExternalPointerFromObject(
   return UncheckedCast<RawPtrT>(UncheckedCast<WordT>(entry));
 #else
   return LoadObjectField<RawPtrT>(object, offset);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 void CodeStubAssembler::StoreExternalPointerToObject(TNode<HeapObject> object,
                                                      TNode<IntPtrT> offset,
                                                      TNode<RawPtrT> pointer,
                                                      ExternalPointerTag tag) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   DCHECK_NE(tag, kExternalPointerNullTag);
   TNode<RawPtrT> external_pointer_table_address =
       ExternalPointerTableAddress(tag);
@@ -1852,7 +1852,7 @@ void CodeStubAssembler::StoreExternalPointerToObject(TNode<HeapObject> object,
                       value);
 #else
   StoreObjectFieldNoWriteBarrier<RawPtrT>(object, offset, pointer);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 TNode<TrustedObject> CodeStubAssembler::LoadTrustedPointerFromObject(

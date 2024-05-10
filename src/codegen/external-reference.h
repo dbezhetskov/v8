@@ -89,15 +89,22 @@ class StatsCounter;
   V(address_of_static_offsets_vector, "OffsetsVector::static_offsets_vector")  \
   V(thread_in_wasm_flag_address_address,                                       \
     "Isolate::thread_in_wasm_flag_address_address")                            \
+  EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_POINTER_COMPRESSION(V)                  \
   EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_SANDBOX(V)
 
+#ifdef V8_COMPRESS_POINTERS
+#define EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_POINTER_COMPRESSION(V) \
+  V(external_pointer_table_address,                                 \
+    "Isolate::external_pointer_table_address()")                    \
+  V(shared_external_pointer_table_address_address,                  \
+    "Isolate::shared_external_pointer_table_address_address()")
+#else
+#define EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_POINTER_COMPRESSION(V)
+#endif  // V8_COMPRESS_POINTERS
+
 #ifdef V8_ENABLE_SANDBOX
-#define EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_SANDBOX(V)         \
-  V(external_pointer_table_address,                             \
-    "Isolate::external_pointer_table_address()")                \
-  V(shared_external_pointer_table_address_address,              \
-    "Isolate::shared_external_pointer_table_address_address()") \
-  V(trusted_pointer_table_base_address,                         \
+#define EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_SANDBOX(V) \
+  V(trusted_pointer_table_base_address,                 \
     "Isolate::trusted_pointer_table_base_address()")
 #else
 #define EXTERNAL_REFERENCE_LIST_WITH_ISOLATE_SANDBOX(V)

@@ -371,6 +371,7 @@ inline void MaglevAssembler::LoadBoundedSizeFromObject(Register result,
 
 inline void MaglevAssembler::LoadExternalPointerField(Register result,
                                                       Operand operand) {
+// ???
 #ifdef V8_ENABLE_SANDBOX
   LoadSandboxedPointerField(result, operand);
 #else

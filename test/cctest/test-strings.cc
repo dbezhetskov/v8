@@ -2081,9 +2081,9 @@ TEST(CheckCachedDataInternalExternalUncachedString) {
       Cast<ExternalOneByteString>(string);
   // If the sandbox is enabled, string objects will always be cacheable because
   // they are smaller.
-  CHECK(V8_ENABLE_SANDBOX_BOOL || external_string->is_uncached());
+  CHECK(COMPRESS_POINTERS_BOOL || external_string->is_uncached());
   CHECK(external_string->resource()->IsCacheable());
-  if (!V8_ENABLE_SANDBOX_BOOL) {
+  if (!COMPRESS_POINTERS_BOOL) {
     CHECK_NOT_NULL(external_string->resource()->cached_data());
     CHECK_EQ(external_string->resource()->cached_data(),
              external_string->resource()->data());
@@ -2126,9 +2126,9 @@ TEST(CheckCachedDataInternalExternalUncachedStringTwoByte) {
       Cast<ExternalTwoByteString>(string);
   // If the sandbox is enabled, string objects will always be cacheable because
   // they are smaller.
-  CHECK(V8_ENABLE_SANDBOX_BOOL || external_string->is_uncached());
+  CHECK(COMPRESS_POINTERS_BOOL || external_string->is_uncached());
   CHECK(external_string->resource()->IsCacheable());
-  if (!V8_ENABLE_SANDBOX_BOOL) {
+  if (!COMPRESS_POINTERS_BOOL) {
     CHECK_NOT_NULL(external_string->resource()->cached_data());
     CHECK_EQ(external_string->resource()->cached_data(),
              external_string->resource()->data());

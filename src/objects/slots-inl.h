@@ -191,9 +191,9 @@ void FullHeapObjectSlot::StoreHeapObject(Tagged<HeapObject> value) const {
   *location() = value.ptr();
 }
 
-void ExternalPointerSlot::init(IsolateForSandbox isolate,
+void ExternalPointerSlot::init(IsolateForPointerCompression isolate,
                                Tagged<HeapObject> host, Address value) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   ExternalPointerTable& table = isolate.GetExternalPointerTableFor(tag_);
   ExternalPointerHandle handle = table.AllocateAndInitializeEntry(
       isolate.GetExternalPointerTableSpaceFor(tag_, host.address()), value,
@@ -204,7 +204,7 @@ void ExternalPointerSlot::init(IsolateForSandbox isolate,
   Release_StoreHandle(handle);
 #else
   store(isolate, value);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 #ifdef V8_COMPRESS_POINTERS
@@ -223,30 +223,31 @@ void ExternalPointerSlot::Release_StoreHandle(
 }
 #endif  // V8_COMPRESS_POINTERS
 
-Address ExternalPointerSlot::load(IsolateForSandbox isolate) {
-#ifdef V8_ENABLE_SANDBOX
+Address ExternalPointerSlot::load(IsolateForPointerCompression isolate) {
+#ifdef V8_COMPRESS_POINTERS
   const ExternalPointerTable& table = isolate.GetExternalPointerTableFor(tag_);
   ExternalPointerHandle handle = Relaxed_LoadHandle();
   return table.Get(handle, tag_);
 #else
   return ReadMaybeUnalignedValue<Address>(address());
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
-void ExternalPointerSlot::store(IsolateForSandbox isolate, Address value) {
-#ifdef V8_ENABLE_SANDBOX
+void ExternalPointerSlot::store(IsolateForPointerCompression isolate,
+                                Address value) {
+#ifdef V8_COMPRESS_POINTERS
   ExternalPointerTable& table = isolate.GetExternalPointerTableFor(tag_);
   ExternalPointerHandle handle = Relaxed_LoadHandle();
   table.Set(handle, value, tag_);
 #else
   WriteMaybeUnalignedValue<Address>(address(), value);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 ExternalPointerSlot::RawContent
 ExternalPointerSlot::GetAndClearContentForSerialization(
     const DisallowGarbageCollection& no_gc) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   ExternalPointerHandle content = Relaxed_LoadHandle();
   Relaxed_StoreHandle(kNullExternalPointerHandle);
 #else
@@ -259,7 +260,7 @@ ExternalPointerSlot::GetAndClearContentForSerialization(
 void ExternalPointerSlot::RestoreContentAfterSerialization(
     ExternalPointerSlot::RawContent content,
     const DisallowGarbageCollection& no_gc) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   return Relaxed_StoreHandle(content);
 #else
   return WriteMaybeUnalignedValue<Address>(address(), content);
@@ -268,7 +269,7 @@ void ExternalPointerSlot::RestoreContentAfterSerialization(
 
 void ExternalPointerSlot::ReplaceContentWithIndexForSerialization(
     const DisallowGarbageCollection& no_gc, uint32_t index) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   static_assert(sizeof(ExternalPointerHandle) == sizeof(uint32_t));
   Relaxed_StoreHandle(index);
 #else
@@ -278,7 +279,7 @@ void ExternalPointerSlot::ReplaceContentWithIndexForSerialization(
 
 uint32_t ExternalPointerSlot::GetContentAsIndexAfterDeserialization(
     const DisallowGarbageCollection& no_gc) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   static_assert(sizeof(ExternalPointerHandle) == sizeof(uint32_t));
   return Relaxed_LoadHandle();
 #else

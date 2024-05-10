@@ -431,7 +431,7 @@ Reduction MemoryLowering::ReduceLoadExternalPointerField(Node* node) {
   DCHECK_EQ(node->opcode(), IrOpcode::kLoadField);
   FieldAccess const& access = FieldAccessOf(node->op());
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   ExternalPointerTag tag = access.external_pointer_tag;
   DCHECK_NE(tag, kExternalPointerNullTag);
   // Fields for sandboxed external pointer contain a 32-bit handle, not a
@@ -482,7 +482,7 @@ Reduction MemoryLowering::ReduceLoadExternalPointerField(Node* node) {
 #else
   NodeProperties::ChangeOp(node, machine()->Load(access.machine_type));
   return Changed(node);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 Reduction MemoryLowering::ReduceLoadBoundedSize(Node* node) {
@@ -590,7 +590,7 @@ Reduction MemoryLowering::ReduceStoreField(Node* node,
   FieldAccess const& access = FieldAccessOf(node->op());
   // External pointer must never be stored by optimized code when sandbox is
   // turned on
-  DCHECK(!access.type.Is(Type::ExternalPointer()) || !V8_ENABLE_SANDBOX_BOOL);
+  DCHECK(!access.type.Is(Type::ExternalPointer()) || !COMPRESS_POINTERS_BOOL);
   // SandboxedPointers are not currently stored by optimized code.
   DCHECK(!access.type.Is(Type::SandboxedPointer()));
   // Bounded size fields are not currently stored by optimized code.

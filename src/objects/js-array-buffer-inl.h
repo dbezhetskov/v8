@@ -89,8 +89,11 @@ void JSArrayBuffer::SetBackingStoreRefForSerialization(uint32_t ref) {
 }
 
 void JSArrayBuffer::init_extension() {
-#if V8_COMPRESS_POINTERS
-  // The extension field is lazily-initialized, so set it to null initially.
+  // Like SetupLazilyInitializedExternalPointerField, but with acquire/release
+  // memory ordering.
+  // TODO(saelo): Consider adding acquire/release external pointer accessors if
+  // those semantics are ever needed in other places as well.
+#ifdef V8_COMPRESS_POINTERS
   base::AsAtomic32::Release_Store(extension_handle_location(),
                                   kNullExternalPointerHandle);
 #else
@@ -99,10 +102,8 @@ void JSArrayBuffer::init_extension() {
 }
 
 ArrayBufferExtension* JSArrayBuffer::extension() const {
-#if V8_COMPRESS_POINTERS
-  // We need Acquire semantics here when loading the entry, see below.
-  // Consider adding respective external pointer accessors if non-relaxed
-  // ordering semantics are ever needed in other places as well.
+  // Like ReadExternalPointerField, but with acquire/release memory ordering.
+#ifdef V8_COMPRESS_POINTERS
   Isolate* isolate = GetIsolateFromWritableObject(*this);
   ExternalPointerHandle handle =
       base::AsAtomic32::Acquire_Load(extension_handle_location());
@@ -114,10 +115,9 @@ ArrayBufferExtension* JSArrayBuffer::extension() const {
 }
 
 void JSArrayBuffer::set_extension(ArrayBufferExtension* extension) {
-#if V8_COMPRESS_POINTERS
-  // TODO(saelo): if we ever use the external pointer table for all external
-  // pointer fields in the no-sandbox-ptr-compression config, replace this code
-  // here and above with the respective external pointer accessors.
+  // Like WriteLazilyInitializedExternalPointerField, but with acquire/release
+  // memory ordering.
+#ifdef V8_COMPRESS_POINTERS
   IsolateForPointerCompression isolate = GetIsolateFromWritableObject(*this);
   const ExternalPointerTag tag = kArrayBufferExtensionTag;
   Address value = reinterpret_cast<Address>(extension);
@@ -126,7 +126,6 @@ void JSArrayBuffer::set_extension(ArrayBufferExtension* extension) {
   ExternalPointerHandle current_handle =
       base::AsAtomic32::Relaxed_Load(extension_handle_location());
   if (current_handle == kNullExternalPointerHandle) {
-    // We need Release semantics here, see above.
     ExternalPointerHandle handle = table.AllocateAndInitializeEntry(
         isolate.GetExternalPointerTableSpaceFor(tag, address()), value, tag);
     base::AsAtomic32::Release_Store(extension_handle_location(), handle);
@@ -139,7 +138,7 @@ void JSArrayBuffer::set_extension(ArrayBufferExtension* extension) {
   WriteBarrier::Marking(*this, extension);
 }
 
-#if V8_COMPRESS_POINTERS
+#ifdef V8_COMPRESS_POINTERS
 ExternalPointerHandle* JSArrayBuffer::extension_handle_location() const {
   Address location = field_address(kExtensionOffset);
   return reinterpret_cast<ExternalPointerHandle*>(location);

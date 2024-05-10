@@ -195,7 +195,7 @@ FieldAccess AccessBuilder::ForJSExternalObjectValue() {
   return access;
 }
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
 // static
 FieldAccess AccessBuilder::ForJSExternalObjectPointerHandle() {
   FieldAccess access = {
@@ -540,7 +540,7 @@ FieldAccess AccessBuilder::ForJSTypedArrayExternalPointer() {
       Type::SandboxedPointer(),
       MachineType::SandboxedPointer(),
 #else
-      Type::ExternalPointer(),
+      Type::OtherInternal(),
       MachineType::Pointer(),
 #endif
       kNoWriteBarrier,
@@ -562,7 +562,7 @@ FieldAccess AccessBuilder::ForJSDataViewDataPointer() {
       Type::SandboxedPointer(),
       MachineType::SandboxedPointer(),
 #else
-      Type::ExternalPointer(),
+      Type::OtherInternal(),
       MachineType::Pointer(),
 #endif
       kNoWriteBarrier,

@@ -234,8 +234,10 @@ class FunctionTemplateInfo
   // returns/accepts C function and converts the value from and to redirected
   // pointer.
   DECL_EXTERNAL_POINTER_ACCESSORS_MAYBE_READ_ONLY_HOST(callback, Address)
-  inline void init_callback_redirection(i::IsolateForSandbox isolate);
-  inline void remove_callback_redirection(i::IsolateForSandbox isolate);
+  inline void init_callback_redirection(
+      i::IsolateForPointerCompression isolate);
+  inline void remove_callback_redirection(
+      i::IsolateForPointerCompression isolate);
 
   template <class IsolateT>
   inline bool has_callback(IsolateT* isolate) const;

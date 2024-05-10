@@ -16,10 +16,11 @@ class ExternalPointerMember {
  public:
   ExternalPointerMember() = default;
 
-  void Init(Address host_address, IsolateForSandbox isolate, Address value);
+  void Init(Address host_address, IsolateForPointerCompression isolate,
+            Address value);
 
-  inline Address load(const IsolateForSandbox isolate) const;
-  inline void store(IsolateForSandbox isolate, Address value);
+  inline Address load(const IsolateForPointerCompression isolate) const;
+  inline void store(IsolateForPointerCompression isolate, Address value);
 
   inline ExternalPointer_t load_encoded() const;
   inline void store_encoded(ExternalPointer_t value);
@@ -35,7 +36,7 @@ class ExternalPointerMember {
 template <ExternalPointerTag tag>
 V8_INLINE void InitExternalPointerField(Address host_address,
                                         Address field_address,
-                                        IsolateForSandbox isolate,
+                                        IsolateForPointerCompression isolate,
                                         Address value);
 
 // If the sandbox is enabled: reads the ExternalPointerHandle from the field and
@@ -47,8 +48,8 @@ V8_INLINE void InitExternalPointerField(Address host_address,
 // kNullExternalPointerHandle, which is guaranteed to result in kNullAddress
 // being returned from the external pointer table.
 template <ExternalPointerTag tag>
-V8_INLINE Address ReadExternalPointerField(Address field_address,
-                                           IsolateForSandbox isolate);
+V8_INLINE Address ReadExternalPointerField(
+    Address field_address, IsolateForPointerCompression isolate);
 
 // If the sandbox is enabled: reads the ExternalPointerHandle from the field and
 // stores the external pointer to the corresponding entry in the external
@@ -56,7 +57,7 @@ V8_INLINE Address ReadExternalPointerField(Address field_address,
 // field.
 template <ExternalPointerTag tag>
 V8_INLINE void WriteExternalPointerField(Address field_address,
-                                         IsolateForSandbox isolate,
+                                         IsolateForPointerCompression isolate,
                                          Address value);
 
 // Set up a lazily-initialized external pointer field. If the sandbox is
@@ -76,8 +77,8 @@ V8_INLINE void SetupLazilyInitializedExternalPointerField(
 // If the sandbox is disabled, this is equivalent to WriteExternalPointerField.
 template <ExternalPointerTag tag>
 V8_INLINE void WriteLazilyInitializedExternalPointerField(
-    Address host_address, Address field_address, IsolateForSandbox isolate,
-    Address value);
+    Address host_address, Address field_address,
+    IsolateForPointerCompression isolate, Address value);
 
 }  // namespace internal
 }  // namespace v8

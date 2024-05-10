@@ -499,15 +499,16 @@
 
 // Host objects in ReadOnlySpace can't define the isolate-less accessor.
 #define DECL_EXTERNAL_POINTER_ACCESSORS_MAYBE_READ_ONLY_HOST(name, type) \
-  inline type name(i::IsolateForSandbox isolate) const;                  \
-  inline void init_##name(i::IsolateForSandbox isolate,                  \
+  inline type name(i::IsolateForPointerCompression isolate) const;       \
+  inline void init_##name(i::IsolateForPointerCompression isolate,       \
                           const type initial_value);                     \
-  inline void set_##name(i::IsolateForSandbox isolate, const type value);
+  inline void set_##name(i::IsolateForPointerCompression isolate,        \
+                         const type value);
 
 // Host objects in ReadOnlySpace can't define the isolate-less accessor.
 #define EXTERNAL_POINTER_ACCESSORS_MAYBE_READ_ONLY_HOST(holder, name, type, \
                                                         offset, tag)        \
-  type holder::name(i::IsolateForSandbox isolate) const {                   \
+  type holder::name(i::IsolateForPointerCompression isolate) const {        \
     /* This is a workaround for MSVC error C2440 not allowing  */           \
     /* reinterpret casts to the same type. */                               \
     struct C2440 {};                                                        \
@@ -515,7 +516,7 @@
         HeapObject::ReadExternalPointerField<tag>(offset, isolate);         \
     return reinterpret_cast<type>(reinterpret_cast<C2440*>(result));        \
   }                                                                         \
-  void holder::init_##name(i::IsolateForSandbox isolate,                    \
+  void holder::init_##name(i::IsolateForPointerCompression isolate,         \
                            const type initial_value) {                      \
     /* This is a workaround for MSVC error C2440 not allowing  */           \
     /* reinterpret casts to the same type. */                               \
@@ -524,7 +525,8 @@
         reinterpret_cast<const C2440*>(initial_value));                     \
     HeapObject::InitExternalPointerField<tag>(offset, isolate, the_value);  \
   }                                                                         \
-  void holder::set_##name(i::IsolateForSandbox isolate, const type value) { \
+  void holder::set_##name(i::IsolateForPointerCompression isolate,          \
+                          const type value) {                               \
     /* This is a workaround for MSVC error C2440 not allowing  */           \
     /* reinterpret casts to the same type. */                               \
     struct C2440 {};                                                        \
@@ -539,7 +541,8 @@
 
 #define EXTERNAL_POINTER_ACCESSORS(holder, name, type, offset, tag)           \
   type holder::name() const {                                                 \
-    i::IsolateForSandbox isolate = GetIsolateForSandbox(*this);               \
+    i::IsolateForPointerCompression isolate =                                 \
+        GetIsolateForPointerCompression(*this);                               \
     return holder::name(isolate);                                             \
   }                                                                           \
   EXTERNAL_POINTER_ACCESSORS_MAYBE_READ_ONLY_HOST(holder, name, type, offset, \

@@ -332,29 +332,22 @@ class ExternalPointerSlot
   {
   }
 
-  inline void init(IsolateForSandbox isolate, Tagged<HeapObject> host,
-                   Address value);
+  inline void init(IsolateForPointerCompression isolate,
+                   Tagged<HeapObject> host, Address value);
 
 #ifdef V8_COMPRESS_POINTERS
-  // When the external pointer is sandboxed, or for array buffer extensions when
-  // pointer compression is on, its slot stores a handle to an entry in an
-  // ExternalPointerTable. These methods allow access to the underlying handle
-  // while the load/store methods below resolve the handle to the real pointer.
-  // Handles should generally be accessed atomically as they may be accessed
-  // from other threads, for example GC marking threads.
-  //
-  // TODO(wingo): Remove if we switch to use the EPT for all external pointers
-  // when pointer compression is enabled.
-  bool HasExternalPointerHandle() const {
-    return V8_ENABLE_SANDBOX_BOOL || tag() == kArrayBufferExtensionTag;
-  }
+  // When pointer compression is enabled, external pointer slots store a handle
+  // to an entry in an ExternalPointerTable. These methods allow access to the
+  // underlying handle while the load/store methods below resolve the handle to
+  // the real pointer.  Handles should generally be accessed atomically as they
+  // may be accessed from other threads, for example GC marking threads.
   inline ExternalPointerHandle Relaxed_LoadHandle() const;
   inline void Relaxed_StoreHandle(ExternalPointerHandle handle) const;
   inline void Release_StoreHandle(ExternalPointerHandle handle) const;
 #endif  // V8_COMPRESS_POINTERS
 
-  inline Address load(IsolateForSandbox isolate);
-  inline void store(IsolateForSandbox isolate, Address value);
+  inline Address load(IsolateForPointerCompression isolate);
+  inline void store(IsolateForPointerCompression isolate, Address value);
 
   // ExternalPointerSlot serialization support.
   // These methods can be used to clear an external pointer slot prior to
@@ -384,7 +377,6 @@ class ExternalPointerSlot
  private:
 #ifdef V8_COMPRESS_POINTERS
   ExternalPointerHandle* handle_location() const {
-    DCHECK(HasExternalPointerHandle());
     return reinterpret_cast<ExternalPointerHandle*>(address());
   }
 

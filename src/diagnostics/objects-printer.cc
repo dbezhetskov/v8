@@ -404,7 +404,7 @@ void BytecodeArray::BytecodeArrayPrint(std::ostream& os) {
 
 void BytecodeWrapper::BytecodeWrapperPrint(std::ostream& os) {
   PrintHeader(os, "BytecodeWrapper");
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   os << "\n    bytecode: " << Brief(bytecode(isolate));
 }
 
@@ -740,7 +740,7 @@ void JSObjectPrintBody(std::ostream& os, Tagged<JSObject> obj,
   }
   int embedder_fields = obj->GetEmbedderFieldCount();
   if (embedder_fields > 0) {
-    Isolate* isolate = GetIsolateForSandbox(obj);
+    Isolate* isolate = GetIsolateForPointerCompression(obj);
     os << " - embedder fields = {";
     for (int i = 0; i < embedder_fields; i++) {
       os << "\n    ";
@@ -961,7 +961,7 @@ void ClassBoilerplate::ClassBoilerplatePrint(std::ostream& os) {
 }
 
 void EmbedderDataArray::EmbedderDataArrayPrint(std::ostream& os) {
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   PrintHeader(os, "EmbedderDataArray");
   os << "\n - length: " << length();
   EmbedderDataSlot start(*this, 0);
@@ -1501,7 +1501,7 @@ void FeedbackVector::FeedbackVectorPrint(std::ostream& os) {
   os << "\n - shared function info: " << Brief(shared_function_info());
   if (has_optimized_code()) {
     os << "\n - optimized code: "
-       << Brief(optimized_code(GetIsolateForSandbox(*this)));
+       << Brief(optimized_code(GetIsolateForPointerCompression(*this)));
   } else {
     os << "\n - no optimized code";
   }
@@ -2526,7 +2526,7 @@ void WasmSuspendingObject::WasmSuspendingObjectPrint(std::ostream& os) {
 }
 
 void WasmInstanceObject::WasmInstanceObjectPrint(std::ostream& os) {
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   JSObjectPrintHeader(os, *this, "WasmInstanceObject");
   os << "\n - trusted_data: " << Brief(trusted_data(isolate));
   os << "\n - module_object: " << Brief(module_object());
@@ -2606,7 +2606,7 @@ void WasmDispatchTable::WasmDispatchTablePrint(std::ostream& os) {
 
 // Never called directly, as WasmFunctionData is an "abstract" class.
 void WasmFunctionData::WasmFunctionDataPrint(std::ostream& os) {
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   os << "\n - func_ref: " << Brief(func_ref());
   os << "\n - internal: " << Brief(internal());
   os << "\n - wrapper_code: " << Brief(wrapper_code(isolate));
@@ -2639,7 +2639,7 @@ void WasmResumeData::WasmResumeDataPrint(std::ostream& os) {
 
 void WasmApiFunctionRef::WasmApiFunctionRefPrint(std::ostream& os) {
   PrintHeader(os, "WasmApiFunctionRef");
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   os << "\n - native_context: " << Brief(native_context());
   os << "\n - callable: " << Brief(callable());
   os << "\n - instance_data: ";
@@ -2665,7 +2665,7 @@ void WasmInternalFunction::WasmInternalFunctionPrint(std::ostream& os) {
 
 void WasmFuncRef::WasmFuncRefPrint(std::ostream& os) {
   PrintHeader(os, "WasmFuncRef");
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   os << "\n - internal: " << Brief(internal(isolate));
   os << "\n";
 }

@@ -95,7 +95,6 @@ ExternalPointerTable::Space*
 IsolateForPointerCompression::GetExternalPointerTableSpaceFor(
     ExternalPointerTag tag, Address host) {
   DCHECK_NE(tag, kExternalPointerNullTag);
-  DCHECK_IMPLIES(tag != kArrayBufferExtensionTag, V8_ENABLE_SANDBOX_BOOL);
 
   if (V8_UNLIKELY(IsSharedExternalPointerType(tag))) {
     DCHECK(!ReadOnlyHeap::Contains(host));
