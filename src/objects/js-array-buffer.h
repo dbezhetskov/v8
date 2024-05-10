@@ -167,7 +167,7 @@ class JSArrayBuffer
  private:
   void DetachInternal(bool force_for_wasm_memory, Isolate* isolate);
 
-#if V8_COMPRESS_POINTERS
+#ifdef V8_COMPRESS_POINTERS
   // When pointer compression is enabled, the pointer to the extension is
   // stored in the external pointer table and the object itself only contains a
   // 32-bit external pointer handles. This simplifies alignment requirements

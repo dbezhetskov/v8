@@ -4401,7 +4401,7 @@ UNINITIALIZED_TEST(SerializeContextData) {
         // provided), but in the wide pointer case we don't actually know
         // whether it's a pointer or a Smi, so we just let these values pass
         // through.
-        if (V8_ENABLE_SANDBOX_BOOL)
+        if (COMPRESS_POINTERS_BOOL)
           CHECK_NULL(context->GetAlignedPointerFromEmbedderData(1));
         else
           CHECK_EQ(raw_data, context->GetAlignedPointerFromEmbedderData(1));

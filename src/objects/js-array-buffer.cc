@@ -89,8 +89,8 @@ void JSArrayBuffer::Attach(std::shared_ptr<BackingStore> backing_store) {
   // Non-empty backing stores must start at a non-null pointer.
   DCHECK_IMPLIES(backing_store_buffer == nullptr, backing_store->IsEmpty());
   // Empty backing stores can be backed by a null pointer or an externally
-  // provided pointer: Either is acceptable. If pointers are sandboxed then
-  // null pointers must be replaced by a special null entry.
+  // provided pointer: Either is acceptable. If pointer compression is enabled
+  // then null pointers must be replaced by a special null entry.
   if (V8_ENABLE_SANDBOX_BOOL && !backing_store_buffer) {
     backing_store_buffer = EmptyBackingStoreBuffer();
   }

@@ -84,9 +84,6 @@ class IterateAndScavengePromotedObjectsVisitor final : public ObjectVisitor {
 #ifdef V8_COMPRESS_POINTERS
     DCHECK_NE(slot.tag(), kExternalPointerNullTag);
     DCHECK(!IsSharedExternalPointerType(slot.tag()));
-    // TODO(chromium:337580006): Remove when pointer compression always uses
-    // EPT.
-    if (!slot.HasExternalPointerHandle()) return;
     ExternalPointerHandle handle = slot.Relaxed_LoadHandle();
     Heap* heap = scavenger_->heap();
     ExternalPointerTable& table = heap->isolate()->external_pointer_table();

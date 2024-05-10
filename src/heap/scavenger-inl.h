@@ -572,10 +572,6 @@ void ScavengeVisitor::VisitExternalPointer(Tagged<HeapObject> host,
   // The EPT entry may or may not be marked already by the incremental marker.
   if (scavenger_->is_incremental_marking_) return;
 
-  // TODO(chromium:337580006): Remove when pointer compression always uses
-  // EPT.
-  if (!slot.HasExternalPointerHandle()) return;
-
   ExternalPointerHandle handle = slot.Relaxed_LoadHandle();
   Heap* heap = scavenger_->heap();
   ExternalPointerTable& table = heap->isolate()->external_pointer_table();

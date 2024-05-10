@@ -1152,7 +1152,7 @@ void ExternalString::VisitExternalPointers(ObjectVisitor* visitor) {
 }
 
 Address ExternalString::resource_as_address() const {
-  Isolate* isolate = GetIsolateForSandbox(this);
+  Isolate* isolate = GetIsolateForPointerCompression(this);
   return resource_.load(isolate);
 }
 

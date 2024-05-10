@@ -946,7 +946,7 @@ void JSAtomicsMutex::UnlockAsyncLockedMutex(
   LockAsyncWaiterQueueNode* waiter_node =
       reinterpret_cast<LockAsyncWaiterQueueNode*>(
           async_locked_waiter_wrapper->foreign_address<kGenericForeignTag>(
-              IsolateForSandbox(requester)));
+              IsolateForPointerCompression(requester)));
   LockAsyncWaiterQueueNode::RemoveFromAsyncWaiterQueueList(waiter_node);
   Unlock(requester);
 }

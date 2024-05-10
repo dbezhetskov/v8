@@ -20,9 +20,9 @@ void ManagedObjectFinalizerSecondPass(const v8::WeakCallbackInfo<void>& data) {
   isolate->UnregisterManagedPtrDestructor(destructor);
   int64_t adjustment = 0 - static_cast<int64_t>(destructor->estimated_size_);
   destructor->destructor_(destructor->shared_ptr_ptr_);
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   destructor->ZapExternalPointerTableEntry();
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   delete destructor;
   data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(adjustment);
 }

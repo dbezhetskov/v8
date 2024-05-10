@@ -22,31 +22,31 @@ namespace internal {
 TQ_OBJECT_CONSTRUCTORS_IMPL(Foreign)
 
 template <ExternalPointerTag tag>
-Address Foreign::foreign_address(IsolateForSandbox isolate) const {
+Address Foreign::foreign_address(IsolateForPointerCompression isolate) const {
   return HeapObject::ReadExternalPointerField<tag>(kForeignAddressOffset,
                                                    isolate);
 }
 
 template <ExternalPointerTag tag>
 Address Foreign::foreign_address() const {
-  IsolateForSandbox isolate = GetIsolateForSandbox(*this);
+  IsolateForPointerCompression isolate = GetIsolateForPointerCompression(*this);
   return ReadExternalPointerField<tag>(kForeignAddressOffset, isolate);
 }
 
 template <ExternalPointerTag tag>
-void Foreign::set_foreign_address(IsolateForSandbox isolate,
+void Foreign::set_foreign_address(IsolateForPointerCompression isolate,
                                   const Address value) {
   WriteExternalPointerField<tag>(kForeignAddressOffset, isolate, value);
 }
 
 template <ExternalPointerTag tag>
-void Foreign::init_foreign_address(IsolateForSandbox isolate,
+void Foreign::init_foreign_address(IsolateForPointerCompression isolate,
                                    const Address initial_value) {
   InitExternalPointerField<tag>(kForeignAddressOffset, isolate, initial_value);
 }
 
 Address Foreign::foreign_address_unchecked() const {
-  Isolate* isolate = GetIsolateForSandbox(*this);
+  Isolate* isolate = GetIsolateForPointerCompression(*this);
   return ReadExternalPointerField<kAnyForeignTag>(kForeignAddressOffset,
                                                   isolate);
 }

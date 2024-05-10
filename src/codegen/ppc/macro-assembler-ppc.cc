@@ -793,7 +793,7 @@ void MacroAssembler::LoadExternalPointerField(Register destination,
                                               Register scratch) {
   DCHECK(!AreAliased(destination, isolate_root));
   ASM_CODE_COMMENT(this);
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   DCHECK_NE(tag, kExternalPointerNullTag);
   DCHECK(!IsSharedExternalPointerType(tag));
   UseScratchRegisterScope temps(this);
@@ -817,7 +817,7 @@ void MacroAssembler::LoadExternalPointerField(Register destination,
   AndU64(destination, destination, scratch);
 #else
   LoadU64(destination, field_operand, scratch);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 void MacroAssembler::LoadTrustedPointerField(Register destination,

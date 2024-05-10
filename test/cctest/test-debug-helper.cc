@@ -326,7 +326,7 @@ TEST(GetObjectProperties) {
   props = d::GetObjectProperties((*o).ptr(), &ReadMemory, heap_addresses);
   CHECK(Contains(props->brief, "\"" + std::string(80, 'a') + "...\""));
 
-#ifndef V8_ENABLE_SANDBOX
+#ifndef V8_COMPRESS_POINTERS
   // GetObjectProperties can read cacheable external strings.
   StringResource* string_resource = new StringResource(true);
   auto cachable_external_string =

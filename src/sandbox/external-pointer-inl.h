@@ -18,23 +18,22 @@ namespace v8 {
 namespace internal {
 
 template <ExternalPointerTag tag>
-inline void ExternalPointerMember<tag>::Init(Address host_address,
-                                             IsolateForSandbox isolate,
-                                             Address value) {
+inline void ExternalPointerMember<tag>::Init(
+    Address host_address, IsolateForPointerCompression isolate, Address value) {
   InitExternalPointerField<tag>(
       host_address, reinterpret_cast<Address>(storage_), isolate, value);
 }
 
 template <ExternalPointerTag tag>
 inline Address ExternalPointerMember<tag>::load(
-    const IsolateForSandbox isolate) const {
+    const IsolateForPointerCompression isolate) const {
   return ReadExternalPointerField<tag>(reinterpret_cast<Address>(storage_),
                                        isolate);
 }
 
 template <ExternalPointerTag tag>
-inline void ExternalPointerMember<tag>::store(IsolateForSandbox isolate,
-                                              Address value) {
+inline void ExternalPointerMember<tag>::store(
+    IsolateForPointerCompression isolate, Address value) {
   WriteExternalPointerField<tag>(reinterpret_cast<Address>(storage_), isolate,
                                  value);
 }
@@ -52,9 +51,9 @@ inline void ExternalPointerMember<tag>::store_encoded(ExternalPointer_t value) {
 template <ExternalPointerTag tag>
 V8_INLINE void InitExternalPointerField(Address host_address,
                                         Address field_address,
-                                        IsolateForSandbox isolate,
+                                        IsolateForPointerCompression isolate,
                                         Address value) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   static_assert(tag != kExternalPointerNullTag);
   ExternalPointerTable& table = isolate.GetExternalPointerTableFor(tag);
   ExternalPointerHandle handle = table.AllocateAndInitializeEntry(
@@ -66,13 +65,13 @@ V8_INLINE void InitExternalPointerField(Address host_address,
   base::AsAtomic32::Release_Store(location, handle);
 #else
   WriteExternalPointerField<tag>(field_address, isolate, value);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 template <ExternalPointerTag tag>
-V8_INLINE Address ReadExternalPointerField(Address field_address,
-                                           IsolateForSandbox isolate) {
-#ifdef V8_ENABLE_SANDBOX
+V8_INLINE Address ReadExternalPointerField(
+    Address field_address, IsolateForPointerCompression isolate) {
+#ifdef V8_COMPRESS_POINTERS
   static_assert(tag != kExternalPointerNullTag);
   // Handles may be written to objects from other threads so the handle needs
   // to be loaded atomically. We assume that the load from the table cannot
@@ -84,14 +83,14 @@ V8_INLINE Address ReadExternalPointerField(Address field_address,
   return isolate.GetExternalPointerTableFor(tag).Get(handle, tag);
 #else
   return ReadMaybeUnalignedValue<Address>(field_address);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 template <ExternalPointerTag tag>
 V8_INLINE void WriteExternalPointerField(Address field_address,
-                                         IsolateForSandbox isolate,
+                                         IsolateForPointerCompression isolate,
                                          Address value) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   static_assert(tag != kExternalPointerNullTag);
   // See comment above for why this is a Relaxed_Load.
   auto location = reinterpret_cast<ExternalPointerHandle*>(field_address);
@@ -99,24 +98,24 @@ V8_INLINE void WriteExternalPointerField(Address field_address,
   isolate.GetExternalPointerTableFor(tag).Set(handle, value, tag);
 #else
   WriteMaybeUnalignedValue<Address>(field_address, value);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 V8_INLINE void SetupLazilyInitializedExternalPointerField(
     Address field_address) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   auto location = reinterpret_cast<ExternalPointerHandle*>(field_address);
   base::AsAtomic32::Release_Store(location, kNullExternalPointerHandle);
 #else
   WriteMaybeUnalignedValue<Address>(field_address, kNullAddress);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 template <ExternalPointerTag tag>
 V8_INLINE void WriteLazilyInitializedExternalPointerField(
-    Address host_address, Address field_address, IsolateForSandbox isolate,
-    Address value) {
-#ifdef V8_ENABLE_SANDBOX
+    Address host_address, Address field_address,
+    IsolateForPointerCompression isolate, Address value) {
+#ifdef V8_COMPRESS_POINTERS
   static_assert(tag != kExternalPointerNullTag);
   // See comment above for why this uses a Relaxed_Load and Release_Store.
   ExternalPointerTable& table = isolate.GetExternalPointerTableFor(tag);
@@ -132,7 +131,7 @@ V8_INLINE void WriteLazilyInitializedExternalPointerField(
   }
 #else
   WriteMaybeUnalignedValue<Address>(field_address, value);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 }  // namespace internal
