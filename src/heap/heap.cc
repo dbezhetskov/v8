@@ -3999,7 +3999,7 @@ void Heap::InvokeIncrementalMarkingEpilogueCallbacks() {
 namespace {
 thread_local Address pending_layout_change_object_address = kNullAddress;
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
 class ExternalPointerSlotInvalidator : public ObjectVisitor {
  public:
   explicit ExternalPointerSlotInvalidator(Isolate* isolate)
@@ -4016,9 +4016,9 @@ class ExternalPointerSlotInvalidator : public ObjectVisitor {
   void VisitExternalPointer(Tagged<HeapObject> host,
                             ExternalPointerSlot slot) override {
     DCHECK_EQ(target_, host);
+    auto isolate = IsolateForPointerCompression(isolate_);
     ExternalPointerTable::Space* space =
-        IsolateForSandbox(isolate_).GetExternalPointerTableSpaceFor(
-            slot.tag(), host.address());
+        isolate.GetExternalPointerTableSpaceFor(slot.tag(), host.address());
     space->NotifyExternalPointerFieldInvalidated(slot.address(), slot.tag());
     num_invalidated_slots++;
   }
@@ -4035,7 +4035,7 @@ class ExternalPointerSlotInvalidator : public ObjectVisitor {
   Tagged<HeapObject> target_;
   int num_invalidated_slots = 0;
 };
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 
 }  // namespace
 
@@ -4090,17 +4090,13 @@ void Heap::NotifyObjectLayoutChange(
       InvalidateExternalPointerSlots::kYes) {
     // Currently, the only time this function receives
     // InvalidateExternalPointerSlots::kYes is when an external string
-    // transitions to a thin string.  If this ever changed to happen for array
-    // buffer extension slots, we would have to run the invalidator in
-    // pointer-compression-but-no-sandbox configurations as well.
+    // transitions to a thin string.
     DCHECK(IsString(object));
-#ifdef V8_ENABLE_SANDBOX
-    if (V8_ENABLE_SANDBOX_BOOL) {
-      ExternalPointerSlotInvalidator slot_invalidator(isolate());
-      int num_invalidated_slots = slot_invalidator.Visit(object);
-      USE(num_invalidated_slots);
-      DCHECK_GT(num_invalidated_slots, 0);
-    }
+#ifdef V8_COMPRESS_POINTERS
+    ExternalPointerSlotInvalidator slot_invalidator(isolate());
+    int num_invalidated_slots = slot_invalidator.Visit(object);
+    USE(num_invalidated_slots);
+    DCHECK_GT(num_invalidated_slots, 0);
 
     // During concurrent marking for a minor GC, the heap also builds up a
     // RememberedSet of external pointer field locations, and uses that set to

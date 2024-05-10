@@ -215,7 +215,7 @@ int Deserializer<IsolateT>::WriteExternalPointer(Tagged<HeapObject> host,
   DCHECK(!next_reference_is_weak_ && !next_reference_is_indirect_pointer_ &&
          !next_reference_is_protected_pointer);
 
-  #ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   ExternalPointerTable::ManagedResource* managed_resource = nullptr;
   ExternalPointerTable* owning_table = nullptr;
   ExternalPointerHandle original_handle = kNullExternalPointerHandle;
@@ -236,16 +236,16 @@ int Deserializer<IsolateT>::WriteExternalPointer(Tagged<HeapObject> host,
     managed_resource->owning_table_ = nullptr;
     managed_resource->ept_entry_ = kNullExternalPointerHandle;
   }
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 
   dest.init(main_thread_isolate(), host, value);
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   if (managed_resource) {
     managed_resource->owning_table_ = owning_table;
     managed_resource->ept_entry_ = original_handle;
   }
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 
   // ExternalPointers can only be written into HeapObject fields, therefore they
   // cover (kExternalPointerSlotSize / kTaggedSize) slots.
@@ -1077,7 +1077,7 @@ template <typename IsolateT>
 template <typename SlotAccessor>
 int Deserializer<IsolateT>::ReadExternalReference(uint8_t data,
                                                   SlotAccessor slot_accessor) {
-  DCHECK_IMPLIES(data == kSandboxedExternalReference, V8_ENABLE_SANDBOX_BOOL);
+  DCHECK_IMPLIES(data == kSandboxedExternalReference, COMPRESS_POINTERS_BOOL);
   Address address = ReadExternalReferenceCase();
   ExternalPointerTag tag = kExternalPointerNullTag;
   if (data == kSandboxedExternalReference) {
@@ -1092,7 +1092,7 @@ template <typename IsolateT>
 template <typename SlotAccessor>
 int Deserializer<IsolateT>::ReadRawExternalReference(
     uint8_t data, SlotAccessor slot_accessor) {
-  DCHECK_IMPLIES(data == kSandboxedExternalReference, V8_ENABLE_SANDBOX_BOOL);
+  DCHECK_IMPLIES(data == kSandboxedExternalReference, COMPRESS_POINTERS_BOOL);
   Address address;
   source_.CopyRaw(&address, kSystemPointerSize);
   ExternalPointerTag tag = kExternalPointerNullTag;
@@ -1211,7 +1211,7 @@ template <typename IsolateT>
 template <typename SlotAccessor>
 int Deserializer<IsolateT>::ReadApiReference(uint8_t data,
                                              SlotAccessor slot_accessor) {
-  DCHECK_IMPLIES(data == kSandboxedApiReference, V8_ENABLE_SANDBOX_BOOL);
+  DCHECK_IMPLIES(data == kSandboxedApiReference, COMPRESS_POINTERS_BOOL);
   uint32_t reference_id = static_cast<uint32_t>(source_.GetUint30());
   Address address;
   if (main_thread_isolate()->api_external_references()) {

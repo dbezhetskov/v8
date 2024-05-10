@@ -10,7 +10,7 @@
 namespace v8 {
 namespace internal {
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
 namespace {
 ExternalPointerHandle LoadExternalPointerHandle(const EmbedderDataSlot& slot) {
   Address loc = slot.address() + EmbedderDataSlot::kExternalPointerOffset;
@@ -33,7 +33,7 @@ Handle<EmbedderDataArray> EmbedderDataArray::EnsureCapacity(
       isolate->factory()->NewEmbedderDataArray(index + 1);
   DisallowGarbageCollection no_gc;
   // Last new space allocation does not require any write barriers.
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   for (int i = 0; i < array->length(); i++) {
     EmbedderDataSlot src(*array, i);
     EmbedderDataSlot dest(*new_array, i);
@@ -50,7 +50,7 @@ Handle<EmbedderDataArray> EmbedderDataArray::EnsureCapacity(
   size_t size = array->length() * kEmbedderDataSlotSize;
   MemCopy(reinterpret_cast<void*>(new_array->slots_start()),
           reinterpret_cast<void*>(array->slots_start()), size);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   return new_array;
 }
 

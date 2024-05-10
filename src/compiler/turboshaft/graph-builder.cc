@@ -1471,7 +1471,7 @@ OpIndex GraphBuilder::Process(
       FieldAccess const& access = FieldAccessOf(node->op());
       // External pointer must never be stored by optimized code.
       DCHECK(!access.type.Is(compiler::Type::ExternalPointer()) ||
-             !V8_ENABLE_SANDBOX_BOOL);
+             !COMPRESS_POINTERS_BOOL);
       // SandboxedPointers are not currently stored by optimized code.
       DCHECK(!access.type.Is(compiler::Type::SandboxedPointer()));
 
@@ -1530,22 +1530,24 @@ OpIndex GraphBuilder::Process(
       }
       MemoryRepresentation rep =
           MemoryRepresentation::FromMachineType(machine_type);
-#ifdef V8_ENABLE_SANDBOX
-      bool is_sandboxed_external =
+#ifdef V8_COMPRESS_POINTERS
+      bool is_external_pointer =
           access.type.Is(compiler::Type::ExternalPointer());
-      if (is_sandboxed_external) {
-        // Fields for sandboxed external pointer contain a 32-bit handle, not a
-        // 64-bit raw pointer.
+      if (is_external_pointer) {
+        // When pointer compression is enabled, external pointer fields contain
+        // a 32-bit handle, not a 64-bit raw pointer.
         rep = MemoryRepresentation::Uint32();
       }
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
       OpIndex value = __ Load(Map(object), kind, rep, access.offset);
-#ifdef V8_ENABLE_SANDBOX
-      if (is_sandboxed_external) {
+#ifdef V8_COMPRESS_POINTERS
+      if (is_external_pointer) {
         value = __ DecodeExternalPointer(value, access.external_pointer_tag);
       }
+#endif  // V8_COMPRESS_POINTERS
+#ifdef V8_ENABLE_SANDBOX
       if (access.is_bounded_size_access) {
-        DCHECK(!is_sandboxed_external);
+        DCHECK(!is_external_pointer);
         value = __ ShiftRightLogical(value, kBoundedSizeShift,
                                      WordRepresentation::WordPtr());
       }

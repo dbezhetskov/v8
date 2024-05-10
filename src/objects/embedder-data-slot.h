@@ -32,10 +32,10 @@ class Object;
 class EmbedderDataSlot
     : public SlotBase<EmbedderDataSlot, Address, kTaggedSize> {
  public:
-#ifdef V8_ENABLE_SANDBOX
-  // When the sandbox is enabled, an EmbedderDataSlot always contains a valid
-  // external pointer table index (initially, zero) in it's "raw" part and a
-  // valid tagged value in its 32-bit "tagged" part.
+#ifdef V8_COMPRESS_POINTERS
+  // When the pointer compression is enabled, an EmbedderDataSlot always
+  // contains a valid external pointer table index (initially, zero) in it's
+  // "raw" part and a valid tagged value in its 32-bit "tagged" part.
   //
   // Layout (sandbox):
   // +-----------------------------------+-----------------------------------+
@@ -47,34 +47,6 @@ class EmbedderDataSlot
   static constexpr int kTaggedPayloadOffset = 0;
   static constexpr int kRawPayloadOffset = kTaggedSize;
   static constexpr int kExternalPointerOffset = kRawPayloadOffset;
-#elif defined(V8_COMPRESS_POINTERS) && defined(V8_TARGET_BIG_ENDIAN)
-  // The raw payload is located in the other "tagged" part of the full pointer
-  // and cotains the upper part of an aligned address. The raw part is not
-  // expected to look like a tagged value.
-  //
-  // Layout (big endian pointer compression):
-  // +-----------------------------------+-----------------------------------+
-  // | External Pointer (high word)      | Tagged (Smi/CompressedPointer)    |
-  // |                                   | OR External Pointer (low word)    |
-  // +-----------------------------------+-----------------------------------+
-  // ^                                   ^
-  // kRawPayloadOffset                   kTaggedayloadOffset
-  // kExternalPointerOffset
-  static constexpr int kExternalPointerOffset = 0;
-  static constexpr int kRawPayloadOffset = 0;
-  static constexpr int kTaggedPayloadOffset = kTaggedSize;
-#elif defined(V8_COMPRESS_POINTERS) && defined(V8_TARGET_LITTLE_ENDIAN)
-  // Layout (little endian pointer compression):
-  // +-----------------------------------+-----------------------------------+
-  // | Tagged (Smi/CompressedPointer)    | External Pointer (high word)      |
-  // | OR External Pointer (low word)    |                                   |
-  // +-----------------------------------+-----------------------------------+
-  // ^                                   ^
-  // kTaggedPayloadOffset                kRawPayloadOffset
-  // kExternalPointerOffset
-  static constexpr int kExternalPointerOffset = 0;
-  static constexpr int kTaggedPayloadOffset = 0;
-  static constexpr int kRawPayloadOffset = kTaggedSize;
 #else
   // Layout (no pointer compression):
   // +-----------------------------------------------------------------------+
@@ -85,7 +57,7 @@ class EmbedderDataSlot
   // kExternalPointerOffset
   static constexpr int kTaggedPayloadOffset = 0;
   static constexpr int kExternalPointerOffset = 0;
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 
   static constexpr int kRequiredPtrAlignment = kSmiTagSize;
 

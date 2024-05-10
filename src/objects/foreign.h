@@ -20,15 +20,15 @@ class Foreign : public TorqueGeneratedForeign<Foreign, HeapObject> {
  public:
   // [foreign_address]: field containing the address.
   template <ExternalPointerTag tag>
-  inline Address foreign_address(IsolateForSandbox isolate) const;
+  inline Address foreign_address(IsolateForPointerCompression isolate) const;
   // Deprecated. Prefer to use the variant above with an isolate parameter.
   template <ExternalPointerTag tag>
   inline Address foreign_address() const;
   template <ExternalPointerTag tag>
-  inline void set_foreign_address(IsolateForSandbox isolate,
+  inline void set_foreign_address(IsolateForPointerCompression isolate,
                                   const Address value);
   template <ExternalPointerTag tag>
-  inline void init_foreign_address(IsolateForSandbox isolate,
+  inline void init_foreign_address(IsolateForPointerCompression isolate,
                                    const Address initial_value);
 
   // Load the address without performing a type check. Only use this when the

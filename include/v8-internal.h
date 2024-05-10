@@ -327,10 +327,10 @@ constexpr size_t kMaxExternalPointers = 0;
 // that it is smaller than the size of the table.
 using ExternalPointerHandle = uint32_t;
 
-// ExternalPointers point to objects located outside the sandbox. When the V8
-// sandbox is enabled, these are stored on heap as ExternalPointerHandles,
-// otherwise they are simply raw pointers.
-#ifdef V8_ENABLE_SANDBOX
+// ExternalPointers point to objects located outside the GC-managed heap. When
+// pointer compression is enabled, these are stored on heap as
+// ExternalPointerHandles, otherwise they are simply raw pointers.
+#ifdef V8_COMPRESS_POINTERS
 using ExternalPointer_t = ExternalPointerHandle;
 #else
 using ExternalPointer_t = Address;
@@ -823,7 +823,7 @@ class Internals {
   static const int kFixedArrayHeaderSize = 2 * kApiTaggedSize;
   static const int kEmbedderDataArrayHeaderSize = 2 * kApiTaggedSize;
   static const int kEmbedderDataSlotSize = kApiSystemPointerSize;
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   static const int kEmbedderDataSlotExternalPointerOffset = kApiTaggedSize;
 #else
   static const int kEmbedderDataSlotExternalPointerOffset = 0;
@@ -1159,7 +1159,7 @@ class Internals {
     return *GetRootSlot(isolate, index);
   }
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   V8_INLINE static Address* GetExternalPointerTableBase(v8::Isolate* isolate) {
     Address addr = reinterpret_cast<Address>(isolate) +
                    kIsolateExternalPointerTableOffset +
@@ -1215,21 +1215,25 @@ class Internals {
 #endif
   }
 
-  V8_INLINE static v8::Isolate* GetIsolateForSandbox(Address obj) {
-#ifdef V8_ENABLE_SANDBOX
+  V8_INLINE static v8::Isolate* GetIsolateForPointerCompression(Address obj) {
+#ifdef V8_COMPRESS_POINTERS
     return reinterpret_cast<v8::Isolate*>(
         internal::IsolateFromNeverReadOnlySpaceObject(obj));
 #else
-    // Not used in non-sandbox mode.
+    // Only used when pointer compression is enabled.
     return nullptr;
 #endif
+  }
+
+  V8_INLINE static v8::Isolate* GetIsolateForSandbox(Address obj) {
+    return GetIsolateForPointerCompression(obj);
   }
 
   template <ExternalPointerTag tag>
   V8_INLINE static Address ReadExternalPointerField(v8::Isolate* isolate,
                                                     Address heap_object_ptr,
                                                     int offset) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     static_assert(tag != kExternalPointerNullTag);
     // See src/sandbox/external-pointer-table-inl.h. Logic duplicated here so
     // it can be inlined and doesn't require an additional call.
@@ -1245,7 +1249,7 @@ class Internals {
     return entry & ~tag;
 #else
     return ReadRawField<Address>(heap_object_ptr, offset);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   }
 
 #ifdef V8_COMPRESS_POINTERS

@@ -498,7 +498,7 @@ void MacroAssembler::LoadExternalPointerField(
     Register destination, Operand field_operand, ExternalPointerTag tag,
     Register scratch, IsolateRootLocation isolateRootLocation) {
   DCHECK(!AreAliased(destination, scratch));
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   DCHECK_NE(tag, kExternalPointerNullTag);
   DCHECK(!IsSharedExternalPointerType(tag));
   DCHECK(!field_operand.AddressUsesRegister(scratch));
@@ -524,7 +524,7 @@ void MacroAssembler::LoadExternalPointerField(
   andq(destination, scratch);
 #else
   movq(destination, field_operand);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 void MacroAssembler::LoadTrustedPointerField(Register destination,

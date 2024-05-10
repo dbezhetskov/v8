@@ -196,7 +196,7 @@ class ObjectPostProcessor final {
       : isolate_(isolate), embedded_data_(EmbeddedData::FromBlob(isolate_)) {}
 
   void Finalize() {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     DCHECK(ReadOnlyHeap::IsReadOnlySpaceShared());
     std::vector<ReadOnlyArtifacts::ExternalPointerRegistryEntry> registry;
     registry.reserve(external_pointer_slots_.size());
@@ -207,7 +207,7 @@ class ObjectPostProcessor final {
 
     isolate_->read_only_artifacts()->set_external_pointer_registry(
         std::move(registry));
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   }
 #define POST_PROCESS_TYPE_LIST(V) \
   V(AccessorInfo)                 \
@@ -256,14 +256,14 @@ class ObjectPostProcessor final {
     Address slot_value =
         GetAnyExternalReferenceAt(encoded.index, encoded.is_api_reference);
     slot.init(isolate_, host, slot_value);
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     // Register these slots during deserialization s.t. later isolates (which
     // share the RO space we are currently deserializing) can properly
     // initialize their external pointer table RO space. Note that slot values
     // are only fully finalized at the end of deserialization, thus we only
     // register the slot itself now and read the handle/value in Finalize.
     external_pointer_slots_.emplace_back(slot);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   }
   void PostProcessAccessorInfo(Tagged<AccessorInfo> o) {
     DecodeExternalPointerSlot(
@@ -300,9 +300,9 @@ class ObjectPostProcessor final {
   Isolate* const isolate_;
   const EmbeddedData embedded_data_;
 
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   std::vector<ExternalPointerSlot> external_pointer_slots_;
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 };
 
 void ReadOnlyDeserializer::PostProcessNewObjects() {

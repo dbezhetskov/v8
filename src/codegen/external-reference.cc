@@ -262,6 +262,20 @@ ExternalReference ExternalReference::handle_scope_implementer_address(
   return ExternalReference(isolate->handle_scope_implementer_address());
 }
 
+#ifdef V8_COMPRESS_POINTERS
+ExternalReference ExternalReference::external_pointer_table_address(
+    Isolate* isolate) {
+  return ExternalReference(isolate->external_pointer_table_address());
+}
+
+ExternalReference
+ExternalReference::shared_external_pointer_table_address_address(
+    Isolate* isolate) {
+  return ExternalReference(
+      isolate->shared_external_pointer_table_address_address());
+}
+#endif  // V8_COMPRESS_POINTERS
+
 #ifdef V8_ENABLE_SANDBOX
 ExternalReference ExternalReference::sandbox_base_address() {
   return ExternalReference(GetProcessWideSandbox()->base_address());
@@ -275,18 +289,6 @@ ExternalReference ExternalReference::empty_backing_store_buffer() {
   return ExternalReference(GetProcessWideSandbox()
                                ->constants()
                                .empty_backing_store_buffer_address());
-}
-
-ExternalReference ExternalReference::external_pointer_table_address(
-    Isolate* isolate) {
-  return ExternalReference(isolate->external_pointer_table_address());
-}
-
-ExternalReference
-ExternalReference::shared_external_pointer_table_address_address(
-    Isolate* isolate) {
-  return ExternalReference(
-      isolate->shared_external_pointer_table_address_address());
 }
 
 ExternalReference ExternalReference::trusted_pointer_table_base_address(
@@ -304,7 +306,6 @@ ExternalReference ExternalReference::code_pointer_table_address() {
 ExternalReference ExternalReference::memory_chunk_metadata_table_address() {
   return ExternalReference(MemoryChunk::MetadataTableAddress());
 }
-
 #endif  // V8_ENABLE_SANDBOX
 
 ExternalReference ExternalReference::interpreter_dispatch_table_address(
@@ -451,13 +452,13 @@ FUNCTION_REFERENCE(ephemeron_key_write_barrier_function,
 
 ExternalPointerHandle AllocateAndInitializeYoungExternalPointerTableEntry(
     Isolate* isolate, Address pointer) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   return isolate->external_pointer_table().AllocateAndInitializeEntry(
       isolate->heap()->young_external_pointer_space(), pointer,
       kExternalObjectValueTag);
 #else
   return 0;
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 FUNCTION_REFERENCE(allocate_and_initialize_young_external_pointer_table_entry,

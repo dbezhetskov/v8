@@ -678,13 +678,13 @@ void Serializer::ObjectSerializer::SerializeExternalString() {
   if (serializer_->external_reference_encoder_.TryEncode(resource).To(
           &reference)) {
     DCHECK(reference.is_from_api());
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     uint32_t external_pointer_entry =
         string->GetResourceRefForDeserialization();
 #endif
     string->SetResourceRefForSerialization(reference.index());
     SerializeObject();
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     string->SetResourceRefForSerialization(external_pointer_entry);
 #else
     string->set_address_as_resource(isolate(), resource);
@@ -1065,10 +1065,10 @@ void Serializer::ObjectSerializer::VisitCodeTarget(
 }
 
 void Serializer::ObjectSerializer::OutputExternalReference(
-    Address target, int target_size, bool sandboxify, ExternalPointerTag tag) {
+    Address target, int target_size, bool compress, ExternalPointerTag tag) {
   DCHECK_LE(target_size, sizeof(target));  // Must fit in Address.
-  DCHECK_IMPLIES(sandboxify, V8_ENABLE_SANDBOX_BOOL);
-  DCHECK_IMPLIES(sandboxify, tag != kExternalPointerNullTag);
+  DCHECK_IMPLIES(compress, COMPRESS_POINTERS_BOOL);
+  DCHECK_IMPLIES(compress, tag != kExternalPointerNullTag);
   DCHECK_NE(tag, kAnyExternalPointerTag);
   ExternalReferenceEncoder::Value encoded_reference;
   bool encoded_successfully;
@@ -1089,7 +1089,7 @@ void Serializer::ObjectSerializer::OutputExternalReference(
     CHECK(serializer_->allow_unknown_external_references_for_testing());
     CHECK(IsAligned(target_size, kTaggedSize));
     CHECK_LE(target_size, kFixedRawDataCount * kTaggedSize);
-    if (sandboxify) {
+    if (compress) {
       CHECK_EQ(target_size, kSystemPointerSize);
       sink_->Put(kSandboxedRawExternalReference, "SandboxedRawReference");
       sink_->PutRaw(reinterpret_cast<uint8_t*>(&target), target_size,
@@ -1103,21 +1103,21 @@ void Serializer::ObjectSerializer::OutputExternalReference(
                     "raw pointer");
     }
   } else if (encoded_reference.is_from_api()) {
-    if (sandboxify) {
+    if (compress) {
       sink_->Put(kSandboxedApiReference, "SandboxedApiRef");
     } else {
       sink_->Put(kApiReference, "ApiRef");
     }
     sink_->PutUint30(encoded_reference.index(), "reference index");
   } else {
-    if (sandboxify) {
+    if (compress) {
       sink_->Put(kSandboxedExternalReference, "SandboxedExternalRef");
     } else {
       sink_->Put(kExternalReference, "ExternalRef");
     }
     sink_->PutUint30(encoded_reference.index(), "reference index");
   }
-  if (sandboxify) {
+  if (compress) {
     sink_->PutUint30(static_cast<uint32_t>(tag >> kExternalPointerTagShift),
                      "external pointer tag");
   }
@@ -1153,7 +1153,7 @@ void Serializer::ObjectSerializer::VisitExternalPointer(
     // Output raw data payload, if any.
     OutputRawData(slot.address());
     Address value = slot.load(isolate());
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     // We need to load the actual tag from the table here since the slot may
     // use a generic tag (e.g. kAnyExternalPointerTag) if the concrete tag is
     // unknown by the visitor (for example the case for Foreigns).
@@ -1161,9 +1161,9 @@ void Serializer::ObjectSerializer::VisitExternalPointer(
     ExternalPointerTag tag = isolate()->external_pointer_table().GetTag(handle);
 #else
     ExternalPointerTag tag = kExternalPointerNullTag;
-#endif  // V8_ENABLE_SANDBOX
-    const bool sandboxify = V8_ENABLE_SANDBOX_BOOL;
-    OutputExternalReference(value, kSystemPointerSize, sandboxify, tag);
+#endif  // V8_COMPRESS_POINTERS
+    const bool compress = COMPRESS_POINTERS_BOOL;
+    OutputExternalReference(value, kSystemPointerSize, compress, tag);
     bytes_processed_so_far_ += kExternalPointerSlotSize;
   } else {
     // Serialization of external references in other objects is handled

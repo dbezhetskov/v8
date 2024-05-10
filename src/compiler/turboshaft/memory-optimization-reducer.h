@@ -386,7 +386,7 @@ class MemoryOptimizationReducer : public Next {
 
   OpIndex REDUCE(DecodeExternalPointer)(OpIndex handle,
                                         ExternalPointerTag tag) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     // Decode loaded external pointer.
     V<WordPtr> table;
     if (isolate_ != nullptr) {
@@ -440,9 +440,9 @@ class MemoryOptimizationReducer : public Next {
                                        MemoryRepresentation::Uint64());
     pointer = __ Word64BitwiseAnd(pointer, __ Word64Constant(~tag));
     return pointer;
-#else   // V8_ENABLE_SANDBOX
+#else   // V8_COMPRESS_POINTERS
     UNREACHABLE();
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   }
 
  private:

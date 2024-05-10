@@ -535,7 +535,7 @@ class WasmLoweringReducer : public Next {
 
   V<WordPtr> BuildLoadExternalPointerFromObject(V<Object> object,
                                                 FieldAccess access) {
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
     DCHECK_NE(access.external_pointer_tag, kExternalPointerNullTag);
     V<Word32> handle = __ Load(object, LoadOp::Kind::TaggedBase(),
                                MemoryRepresentation::Uint32(), access.offset);
@@ -543,7 +543,7 @@ class WasmLoweringReducer : public Next {
 #else
     return __ Load(object, LoadOp::Kind::TaggedBase(),
                    MemoryRepresentation::UintPtr(), access.offset);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
   }
 
   V<Word32> ReduceWasmTypeCheckAbstract(V<Object> object,

@@ -190,34 +190,32 @@ void MarkingVisitorBase<ConcreteVisitor>::VisitExternalPointer(
     Tagged<HeapObject> host, ExternalPointerSlot slot) {
 #ifdef V8_COMPRESS_POINTERS
   DCHECK_NE(slot.tag(), kExternalPointerNullTag);
-  if (slot.HasExternalPointerHandle()) {
-    ExternalPointerHandle handle = slot.Relaxed_LoadHandle();
-    ExternalPointerTable* table;
-    ExternalPointerTable::Space* space;
-    if (IsSharedExternalPointerType(slot.tag())) {
-      table = shared_external_pointer_table_;
-      space = shared_external_pointer_space_;
-    } else {
-      table = external_pointer_table_;
-      if (v8_flags.sticky_mark_bits) {
-        // Everything is considered old during major GC.
-        DCHECK(!Heap::InYoungGeneration(host));
-        if (handle == kNullExternalPointerHandle) return;
-        // The object may either be in young or old EPT.
-        if (table->Contains(heap_->young_external_pointer_space(), handle)) {
-          space = heap_->young_external_pointer_space();
-        } else {
-          DCHECK(table->Contains(heap_->old_external_pointer_space(), handle));
-          space = heap_->old_external_pointer_space();
-        }
+  ExternalPointerHandle handle = slot.Relaxed_LoadHandle();
+  ExternalPointerTable* table;
+  ExternalPointerTable::Space* space;
+  if (IsSharedExternalPointerType(slot.tag())) {
+    table = shared_external_pointer_table_;
+    space = shared_external_pointer_space_;
+  } else {
+    table = external_pointer_table_;
+    if (v8_flags.sticky_mark_bits) {
+      // Everything is considered old during major GC.
+      DCHECK(!Heap::InYoungGeneration(host));
+      if (handle == kNullExternalPointerHandle) return;
+      // The object may either be in young or old EPT.
+      if (table->Contains(heap_->young_external_pointer_space(), handle)) {
+        space = heap_->young_external_pointer_space();
       } else {
-        space = Heap::InYoungGeneration(host)
-                    ? heap_->young_external_pointer_space()
-                    : heap_->old_external_pointer_space();
+        DCHECK(table->Contains(heap_->old_external_pointer_space(), handle));
+        space = heap_->old_external_pointer_space();
       }
+    } else {
+      space = Heap::InYoungGeneration(host)
+                  ? heap_->young_external_pointer_space()
+                  : heap_->old_external_pointer_space();
     }
-    table->Mark(space, handle, slot.address());
   }
+  table->Mark(space, handle, slot.address());
 #endif  // V8_COMPRESS_POINTERS
 }
 

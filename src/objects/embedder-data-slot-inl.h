@@ -98,26 +98,17 @@ bool EmbedderDataSlot::ToAlignedPointer(Isolate* isolate,
   // are accessed this way only from the main thread via API during "mutator"
   // phase which is propely synched with GC (concurrent marker may still look
   // at the tagged part of the embedder slot but read-only access is ok).
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   // The raw part must always contain a valid external pointer table index.
   *out_pointer = reinterpret_cast<void*>(
       ReadExternalPointerField<kEmbedderDataSlotPayloadTag>(
           address() + kExternalPointerOffset, isolate));
   return true;
 #else
-  Address raw_value;
-  if (COMPRESS_POINTERS_BOOL) {
-    // TODO(ishell, v8:8875): When pointer compression is enabled 8-byte size
-    // fields (external pointers, doubles and BigInt data) are only kTaggedSize
-    // aligned so we have to use unaligned pointer friendly way of accessing
-    // them in order to avoid undefined behavior in C++ code.
-    raw_value = base::ReadUnalignedValue<Address>(address());
-  } else {
-    raw_value = *location();
-  }
+  Address raw_value = *location();
   *out_pointer = reinterpret_cast<void*>(raw_value);
   return HAS_SMI_TAG(raw_value);
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 bool EmbedderDataSlot::store_aligned_pointer(Isolate* isolate,
@@ -125,7 +116,7 @@ bool EmbedderDataSlot::store_aligned_pointer(Isolate* isolate,
                                              void* ptr) {
   Address value = reinterpret_cast<Address>(ptr);
   if (!HAS_SMI_TAG(value)) return false;
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   DCHECK_EQ(0, value & kExternalPointerTagMask);
   // When the sandbox is enabled, the external pointer handles in
   // EmbedderDataSlots are lazily initialized: initially they contain the null
@@ -138,7 +129,7 @@ bool EmbedderDataSlot::store_aligned_pointer(Isolate* isolate,
 #else
   gc_safe_store(isolate, value);
   return true;
-#endif  // V8_ENABLE_SANDBOX
+#endif  // V8_COMPRESS_POINTERS
 }
 
 EmbedderDataSlot::RawData EmbedderDataSlot::load_raw(
@@ -198,13 +189,13 @@ bool EmbedderDataSlot::MustClearDuringSerialization(
   // as a dangling pointer.  For consistency it would be nice to avoid writing
   // external pointers also in the wide-pointer case, but as we can't
   // distinguish between Smi values and pointers we just leave them be.
-#ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS
   auto* location = reinterpret_cast<ExternalPointerHandle*>(
       address() + kExternalPointerOffset);
   return base::AsAtomic32::Relaxed_Load(location) != kNullExternalPointerHandle;
-#else   // !V8_ENABLE_SANDBOX
+#else   // !V8_COMPRESS_POINTERS
   return false;
-#endif  // !V8_ENABLE_SANDBOX
+#endif  // !V8_COMPRESS_POINTERS
 }
 
 }  // namespace internal

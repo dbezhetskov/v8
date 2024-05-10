@@ -367,7 +367,7 @@ class ReadStringVisitor : public TqObjectVisitor {
     // Cached external strings are easy to read if the sandbox is disabled;
     // uncached external strings require knowledge of the embedder. For now, we
     // only read cached external strings.
-    if (!V8_ENABLE_SANDBOX_BOOL && IsExternalStringCached(object)) {
+    if (!COMPRESS_POINTERS_BOOL && IsExternalStringCached(object)) {
       ExternalPointer_t resource_data =
           GetOrFinish(object->GetResourceDataValue(accessor_));
       uintptr_t data_address = static_cast<uintptr_t>(resource_data);

@@ -58,15 +58,22 @@ V8_INLINE bool GetIsolateFromHeapObject(Tagged<HeapObject> object,
 #endif  // V8_ENABLE_THIRD_PARTY_HEAP
 }
 
-// Use this function instead of Internals::GetIsolateForSandbox for internal
-// code, as this function is fully inlinable.
-V8_INLINE static Isolate* GetIsolateForSandbox(Tagged<HeapObject> object) {
-#ifdef V8_ENABLE_SANDBOX
+// Use this function instead of Internals::GetIsolateForPointerCompression for
+// internal code, as this function is fully inlinable.
+V8_INLINE static Isolate* GetIsolateForPointerCompression(
+    Tagged<HeapObject> object) {
+#ifdef V8_COMPRESS_POINTERS
   return GetIsolateFromWritableObject(object);
 #else
   // Not used in non-sandbox mode.
   return nullptr;
 #endif
+}
+
+// Use this function instead of Internals::GetIsolateForSandbox for internal
+// code, as this function is fully inlinable.
+V8_INLINE static Isolate* GetIsolateForSandbox(Tagged<HeapObject> object) {
+  return GetIsolateForPointerCompression(object);
 }
 
 }  // namespace internal
