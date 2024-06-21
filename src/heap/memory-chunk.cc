@@ -35,7 +35,7 @@ constexpr MemoryChunk::MainThreadFlags
 MemoryChunk::MemoryChunk(MainThreadFlags flags, MemoryChunkMetadata* metadata)
     : main_thread_flags_(flags),
 #ifdef V8_ENABLE_SANDBOX
-      metadata_index_(MetadataTableIndex(address()))
+      metadata_index_(MetadataTableIndex(address(), metadata))
 #else
       metadata_(metadata)
 #endif
@@ -53,13 +53,13 @@ MemoryChunkMetadata* MemoryChunk::metadata_pointer_table_[] = {nullptr};
 
 // static
 void MemoryChunk::ClearMetadataPointer(MemoryChunkMetadata* metadata) {
-  uint32_t metadata_index = MetadataTableIndex(metadata->ChunkAddress());
+  uint32_t metadata_index = MetadataTableIndex(metadata->ChunkAddress(), metadata);
   DCHECK_EQ(metadata_pointer_table_[metadata_index], metadata);
   metadata_pointer_table_[metadata_index] = nullptr;
 }
 
 // static
-uint32_t MemoryChunk::MetadataTableIndex(Address chunk_address) {
+uint32_t MemoryChunk::MetadataTableIndex(Address chunk_address, MemoryChunkMetadata* metadata) {
   uint32_t index;
   if (V8HeapCompressionScheme::GetPtrComprCageBaseAddress(chunk_address) ==
       V8HeapCompressionScheme::base()) {
