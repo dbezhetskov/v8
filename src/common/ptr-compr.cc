@@ -39,6 +39,16 @@ void ExternalCodeCompressionScheme::set_base_non_inlined(Address base) {
 }
 #endif  // V8_EXTERNAL_CODE_SPACE
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+thread_local Address ReadOnlyHeapAddrAccess::ro_heap_addr_ = kNullAddress;
+// static
+Address ReadOnlyHeapAddrAccess::heap_addr() { return ro_heap_addr_; }
+// static
+void ReadOnlyHeapAddrAccess::set_heap_addr(Address heap_addr) {
+  ro_heap_addr_ = heap_addr;
+}
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+
 #undef THREAD_LOCAL_IF_MULTICAGE
 
 #endif  // V8_COMPRESS_POINTERS
