@@ -568,8 +568,7 @@ if (v8_enable_short_builtin_calls &&
   v8_enable_short_builtin_calls = false
 }
 if (v8_enable_shared_ro_heap == "") {
-  v8_enable_shared_ro_heap = !v8_enable_pointer_compression ||
-                             v8_enable_pointer_compression_shared_cage
+  v8_enable_shared_ro_heap = true
 }
 
 if (v8_enable_sandbox == "") {
@@ -2656,10 +2655,7 @@ action("v8_dump_build_config") {
     mips_use_msa_var = mips_use_msa
   }
 
-  js_shared_memory =
-      v8_enable_shared_ro_heap && (!v8_enable_pointer_compression ||
-                                   v8_enable_pointer_compression_shared_cage) &&
-      !v8_disable_write_barriers
+  js_shared_memory = v8_enable_shared_ro_heap && !v8_disable_write_barriers
   simd_mips = mips_arch_variant_var == "r6" && mips_use_msa
   simulator_run = target_cpu != v8_target_cpu
   use_sanitizer = is_asan || is_cfi || is_msan || is_tsan || is_ubsan

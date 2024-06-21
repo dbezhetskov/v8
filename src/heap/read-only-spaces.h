@@ -74,30 +74,24 @@ class ReadOnlyPageMetadata : public MemoryChunkMetadata {
 
 // -----------------------------------------------------------------------------
 // Artifacts used to construct a new SharedReadOnlySpace
-class ReadOnlyArtifacts {
+class ReadOnlyArtifacts final {
  public:
-  virtual ~ReadOnlyArtifacts() = default;
+  ReadOnlyArtifacts() = default;
+
+  ~ReadOnlyArtifacts();
 
   // Initialize the ReadOnlyArtifacts from an Isolate that has just been created
   // either by serialization or by creating the objects directly.
-  virtual void Initialize(Isolate* isolate,
-                          std::vector<ReadOnlyPageMetadata*>&& pages,
-                          const AllocationStats& stats) = 0;
+  void Initialize(Isolate* isolate, std::vector<ReadOnlyPageMetadata*>&& pages,
+                  const AllocationStats& stats);
 
   // This replaces the ReadOnlySpace in the given Heap with a newly constructed
   // SharedReadOnlySpace that has pages created from the ReadOnlyArtifacts. This
   // is only called for the first Isolate, where the ReadOnlySpace is created
   // during the bootstrap process.
+  void ReinstallReadOnlySpace(Isolate* isolate);
 
-  virtual void ReinstallReadOnlySpace(Isolate* isolate) = 0;
-  // Creates a ReadOnlyHeap for a specific Isolate. This will be populated with
-  // a SharedReadOnlySpace object that points to the Isolate's heap. Should only
-  // be used when the read-only heap memory is shared with or without pointer
-  // compression. This is called for all subsequent Isolates created after the
-  // first one.
-  virtual ReadOnlyHeap* GetReadOnlyHeapForIsolate(Isolate* isolate) = 0;
-
-  virtual void VerifyHeapAndSpaceRelationships(Isolate* isolate) = 0;
+  void VerifyHeapAndSpaceRelationships(Isolate* isolate);
 
   std::vector<ReadOnlyPageMetadata*>& pages() { return pages_; }
 
@@ -112,8 +106,8 @@ class ReadOnlyArtifacts {
     return shared_read_only_space_.get();
   }
 
-  void set_read_only_heap(std::unique_ptr<ReadOnlyHeap> read_only_heap);
-  ReadOnlyHeap* read_only_heap() const { return read_only_heap_.get(); }
+  void set_read_only_heap(std::unique_ptr<SharedReadOnlyHeap> read_only_heap);
+  SharedReadOnlyHeap* read_only_heap() const { return read_only_heap_.get(); }
 
   void set_initial_next_unique_sfi_id(uint32_t id) {
     initial_next_unique_sfi_id_ = id;
@@ -144,13 +138,13 @@ class ReadOnlyArtifacts {
   void VerifyChecksum(SnapshotData* read_only_snapshot_data,
                       bool read_only_heap_created);
 
- protected:
-  ReadOnlyArtifacts() = default;
+ private:
+  friend class ReadOnlyHeap;
 
   std::vector<ReadOnlyPageMetadata*> pages_;
   AllocationStats stats_;
   std::unique_ptr<SharedReadOnlySpace> shared_read_only_space_;
-  std::unique_ptr<ReadOnlyHeap> read_only_heap_;
+  std::unique_ptr<SharedReadOnlyHeap> read_only_heap_;
   uint32_t initial_next_unique_sfi_id_ = 0;
   std::vector<ExternalPointerRegistryEntry> external_pointer_registry_;
 #ifdef DEBUG
@@ -158,53 +152,11 @@ class ReadOnlyArtifacts {
   // any.
   base::Optional<uint32_t> read_only_blob_checksum_;
 #endif  // DEBUG
-};
-
-// -----------------------------------------------------------------------------
-// Artifacts used to construct a new SharedReadOnlySpace when pointer
-// compression is disabled and so there is a single ReadOnlySpace with one set
-// of pages shared between all Isolates.
-class SingleCopyReadOnlyArtifacts : public ReadOnlyArtifacts {
- public:
-  ~SingleCopyReadOnlyArtifacts() override;
-
-  ReadOnlyHeap* GetReadOnlyHeapForIsolate(Isolate* isolate) override;
-  void Initialize(Isolate* isolate, std::vector<ReadOnlyPageMetadata*>&& pages,
-                  const AllocationStats& stats) override;
-  void ReinstallReadOnlySpace(Isolate* isolate) override;
-  void VerifyHeapAndSpaceRelationships(Isolate* isolate) override;
-
- private:
   v8::PageAllocator* page_allocator_ = nullptr;
-};
 
-// -----------------------------------------------------------------------------
-// Artifacts used to construct a new SharedReadOnlySpace when pointer
-// compression is enabled and so there is a ReadOnlySpace for each Isolate with
-// with its own set of pages mapped from the canonical set stored here.
-class PointerCompressedReadOnlyArtifacts : public ReadOnlyArtifacts {
- public:
-  ReadOnlyHeap* GetReadOnlyHeapForIsolate(Isolate* isolate) override;
-  void Initialize(Isolate* isolate, std::vector<ReadOnlyPageMetadata*>&& pages,
-                  const AllocationStats& stats) override;
-  void ReinstallReadOnlySpace(Isolate* isolate) override;
-  void VerifyHeapAndSpaceRelationships(Isolate* isolate) override;
-
- private:
-  SharedReadOnlySpace* CreateReadOnlySpace(Isolate* isolate);
-  Tagged_t OffsetForPage(size_t index) const { return page_offsets_[index]; }
-  void InitializeRootsIn(Isolate* isolate);
-  void InitializeRootsFrom(Isolate* isolate);
-
-  std::unique_ptr<v8::PageAllocator::SharedMemoryMapping> RemapPageTo(
-      size_t i, Address new_address, ReadOnlyPageMetadata*& new_page);
-
-  static constexpr size_t kReadOnlyRootsCount =
-      static_cast<size_t>(RootIndex::kReadOnlyRootsCount);
-
-  Address read_only_roots_[kReadOnlyRootsCount];
-  std::vector<Tagged_t> page_offsets_;
-  std::vector<std::unique_ptr<PageAllocator::SharedMemory>> shared_memory_;
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_EXPORT_PRIVATE static ReadOnlyArtifacts* read_only_artifacts_;
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 };
 
 // -----------------------------------------------------------------------------
@@ -216,8 +168,7 @@ class ReadOnlySpace : public BaseSpace {
   // Detach the pages and add them to artifacts for using in creating a
   // SharedReadOnlySpace. Since the current space no longer has any pages, it
   // should be replaced straight after this in its Heap.
-  void DetachPagesAndAddToArtifacts(
-      std::shared_ptr<ReadOnlyArtifacts> artifacts);
+  void DetachPagesAndAddToArtifacts(ReadOnlyArtifacts* artifacts);
 
   V8_EXPORT_PRIVATE ~ReadOnlySpace() override;
   V8_EXPORT_PRIVATE virtual void TearDown(MemoryAllocator* memory_allocator);
@@ -279,7 +230,7 @@ class ReadOnlySpace : public BaseSpace {
   void EnsurePage();
 
  protected:
-  friend class SingleCopyReadOnlyArtifacts;
+  friend class ReadOnlyArtifacts;
 
   void SetPermissionsForPages(MemoryAllocator* memory_allocator,
                               PageAllocator::Permission access);
@@ -329,14 +280,12 @@ class SharedReadOnlySpace : public ReadOnlySpace {
     is_marked_read_only_ = true;
   }
 
-  SharedReadOnlySpace(Heap* heap,
-                      PointerCompressedReadOnlyArtifacts* artifacts);
   SharedReadOnlySpace(
       Heap* heap, std::vector<ReadOnlyPageMetadata*>&& new_pages,
       std::vector<std::unique_ptr<::v8::PageAllocator::SharedMemoryMapping>>&&
           mappings,
       AllocationStats&& new_stats);
-  SharedReadOnlySpace(Heap* heap, SingleCopyReadOnlyArtifacts* artifacts);
+  SharedReadOnlySpace(Heap* heap, ReadOnlyArtifacts* artifacts);
   SharedReadOnlySpace(const SharedReadOnlySpace&) = delete;
 
   void TearDown(MemoryAllocator* memory_allocator) override;
