@@ -9,6 +9,7 @@
 #include "src/common/ptr-compr-inl.h"
 #include "src/execution/isolate.h"
 #include "src/heap/code-range.h"
+#include "src/heap/read-only-spaces.h"
 #include "src/heap/trusted-range.h"
 #include "src/sandbox/sandbox.h"
 #include "src/utils/memcopy.h"
@@ -16,6 +17,9 @@
 
 namespace v8 {
 namespace internal {
+
+IsolateGroup::IsolateGroup() {}
+IsolateGroup::~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
 
 #ifdef V8_COMPRESS_POINTERS
 struct PtrComprCageReservationParams
@@ -124,6 +128,37 @@ void IsolateGroup::InitializeOncePerProcess() {
 #endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 }
 
+void IsolateGroup::ClearSharedSpaceIsolate() {
+  // Can only clear shared space isolate when no other isolates are live.
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // The only reference to the group is from the shared space isolate.
+  CHECK_EQ(1, reference_count_.load());
+#else
+  // For shared-cage mode and for mode without pointer compression
+  // the process wide isolate group holds a link too.
+  CHECK_EQ(2, reference_count_.load());
+#endif
+  DCHECK(has_shared_space_isolate());
+  shared_space_isolate_ = nullptr;
+}
+
+Address IsolateGroup::read_only_heap_addr() {
+  return reinterpret_cast<Address>(&shared_ro_heap_);
+}
+
+void IsolateGroup::MaybeRemoveReadOnlyArtifacts() {
+  // RC == 2 because isolate group also holds a link.
+  if (reference_count_.load() == 2) {
+    read_only_artifacts_.reset();
+  }
+}
+
+ReadOnlyArtifacts* IsolateGroup::InitializeReadOnlyArtifacts() {
+  DCHECK(!read_only_artifacts_);
+  read_only_artifacts_ = std::make_unique<ReadOnlyArtifacts>();
+  return read_only_artifacts_.get();
+}
+
 // static
 IsolateGroup* IsolateGroup::New() {
   IsolateGroup* group = new IsolateGroup;
@@ -157,14 +192,15 @@ void IsolateGroup::ReleaseGlobal() {
     code_range->Free();
   }
 
-  IsolateGroup *group = GetProcessWideIsolateGroup();
+  IsolateGroup* group = GetProcessWideIsolateGroup();
   CHECK_EQ(group->reference_count_.load(), 1);
+  CHECK(!group->has_shared_space_isolate());
   group->page_allocator_ = nullptr;
   group->trusted_pointer_compression_cage_ = nullptr;
   group->pointer_compression_cage_ = nullptr;
   DCHECK_EQ(COMPRESS_POINTERS_BOOL, group->reservation_.IsReserved());
   if (COMPRESS_POINTERS_BOOL) group->reservation_.Free();
-#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 }
 
 }  // namespace internal

@@ -498,8 +498,6 @@ size_t Isolate::HashIsolateForEmbeddedBlob() {
   return hash;
 }
 
-Isolate* Isolate::process_wide_shared_space_isolate_{nullptr};
-
 thread_local Isolate::PerIsolateThreadData* g_current_per_isolate_thread_data_
     V8_CONSTINIT = nullptr;
 thread_local Isolate* g_current_isolate_ V8_CONSTINIT = nullptr;
@@ -3885,11 +3883,10 @@ void Isolate::Delete(Isolate* isolate) {
   SetIsolateThreadLocals(saved_isolate, saved_data);
 }
 
-void Isolate::SetUpFromReadOnlyArtifacts(
-    std::shared_ptr<ReadOnlyArtifacts> artifacts, ReadOnlyHeap* ro_heap) {
+void Isolate::SetUpFromReadOnlyArtifacts(ReadOnlyArtifacts* artifacts,
+                                         ReadOnlyHeap* ro_heap) {
   if (ReadOnlyHeap::IsReadOnlySpaceShared()) {
     DCHECK_NOT_NULL(artifacts);
-    artifacts_ = artifacts;
     InitializeNextUniqueSfiId(artifacts->initial_next_unique_sfi_id());
   } else {
     DCHECK_NULL(artifacts);
@@ -4132,6 +4129,7 @@ void Isolate::Deinit() {
   // tears down.
   if (is_shared_space_isolate()) {
     global_safepoint()->AssertNoClientsOnTearDown();
+    isolate_group()->ClearSharedSpaceIsolate();
   }
 
   if (has_shared_space() && !is_shared_space_isolate()) {
@@ -4364,6 +4362,8 @@ void Isolate::SetIsolateThreadLocals(Isolate* isolate,
 #ifdef V8_EXTERNAL_CODE_SPACE
     ExternalCodeCompressionScheme::InitBase(isolate->code_cage_base());
 #endif  // V8_EXTERNAL_CODE_SPACE
+    ReadOnlyHeapAddrAccess::set_heap_addr(
+        isolate->isolate_group()->read_only_heap_addr());
   } else {
     V8HeapCompressionScheme::InitBase(kNullAddress);
 #ifdef V8_EXTERNAL_CODE_SPACE
@@ -4468,6 +4468,8 @@ Isolate::~Isolate() {
     delete read_only_heap_;
     read_only_heap_ = nullptr;
   }
+
+  isolate_group()->MaybeRemoveReadOnlyArtifacts();
 
   // isolate_group_ released in caller, to ensure that all member destructors
   // run before potentially unmapping the isolate's VirtualMemoryArea.
@@ -4921,12 +4923,12 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   Isolate* use_shared_space_isolate = nullptr;
 
   if (HasFlagThatRequiresSharedHeap()) {
-    if (process_wide_shared_space_isolate_) {
+    if (isolate_group_->has_shared_space_isolate()) {
       owns_shareable_data_ = false;
-      use_shared_space_isolate = process_wide_shared_space_isolate_;
+      use_shared_space_isolate = isolate_group_->shared_space_isolate();
     } else {
-      process_wide_shared_space_isolate_ = this;
-      use_shared_space_isolate = this;
+      isolate_group_->init_shared_space_isolate(this);
+      use_shared_space_isolate = isolate_group_->shared_space_isolate();
       is_shared_space_isolate_ = true;
       DCHECK(owns_shareable_data_);
     }
