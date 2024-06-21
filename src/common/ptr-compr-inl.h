@@ -322,11 +322,14 @@ PtrComprCageAccessScope::PtrComprCageAccessScope(Isolate* isolate)
       ,
       code_cage_base_(ExternalCodeCompressionScheme::base())
 #endif  // V8_EXTERNAL_CODE_SPACE
-{
+      ,
+      ro_heap_addr_(ReadOnlyHeapAddrAccess::heap_addr()) {
   V8HeapCompressionScheme::InitBase(isolate->cage_base());
 #ifdef V8_EXTERNAL_CODE_SPACE
   ExternalCodeCompressionScheme::InitBase(isolate->code_cage_base());
 #endif  // V8_EXTERNAL_CODE_SPACE
+  ReadOnlyHeapAddrAccess::set_heap_addr(
+      isolate->isolate_group()->read_only_heap_addr());
 }
 
 PtrComprCageAccessScope::~PtrComprCageAccessScope() {
@@ -334,6 +337,7 @@ PtrComprCageAccessScope::~PtrComprCageAccessScope() {
 #ifdef V8_EXTERNAL_CODE_SPACE
   ExternalCodeCompressionScheme::InitBase(code_cage_base_);
 #endif  // V8_EXTERNAL_CODE_SPACE
+  ReadOnlyHeapAddrAccess::set_heap_addr(ro_heap_addr_);
 }
 
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES

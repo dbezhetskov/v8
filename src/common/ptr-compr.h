@@ -85,6 +85,14 @@ using TrustedSpaceCompressionScheme = V8HeapCompressionSchemeImpl<TrustedCage>;
 using TrustedSpaceCompressionScheme = V8HeapCompressionScheme;
 #endif  // V8_ENABLE_SANDBOX
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+struct ReadOnlyHeapAddrAccess : public AllStatic {
+  static V8_EXPORT_PRIVATE Address heap_addr();
+  static V8_EXPORT_PRIVATE void set_heap_addr(Address heap_addr);
+  static thread_local Address ro_heap_addr_ V8_CONSTINIT;
+};
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+
 // A compression scheme which can be passed if the only objects we ever expect
 // to see are Smis (e.g. for {TaggedField<Smi, 0, SmiCompressionScheme>}).
 class SmiCompressionScheme : public AllStatic {
@@ -212,6 +220,7 @@ class PtrComprCageAccessScope final {
 #ifdef V8_EXTERNAL_CODE_SPACE
   const Address code_cage_base_;
 #endif  // V8_EXTERNAL_CODE_SPACE
+  const Address ro_heap_addr_;
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 };
 

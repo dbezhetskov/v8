@@ -7,8 +7,6 @@
 #include <cstddef>
 #include <cstring>
 
-#include "src/base/lazy-instance.h"
-#include "src/base/platform/mutex.h"
 #include "src/common/globals.h"
 #include "src/common/ptr-compr-inl.h"
 #include "src/heap/heap-write-barrier-inl.h"
@@ -16,6 +14,7 @@
 #include "src/heap/mutable-page-metadata.h"
 #include "src/heap/read-only-spaces.h"
 #include "src/heap/third-party/heap-api.h"
+#include "src/init/isolate-group.h"
 #include "src/objects/heap-object-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/smi.h"
@@ -25,46 +24,17 @@
 namespace v8 {
 namespace internal {
 
-namespace {
-// Mutex used to ensure that ReadOnlyArtifacts creation is only done once.
-base::LazyMutex read_only_heap_creation_mutex_ = LAZY_MUTEX_INITIALIZER;
-
-// Weak pointer holding ReadOnlyArtifacts. ReadOnlyHeap::SetUp creates a
-// std::shared_ptr from this when it attempts to reuse it. Since all Isolates
-// hold a std::shared_ptr to this, the object is destroyed when no Isolates
-// remain.
-base::LazyInstance<std::weak_ptr<ReadOnlyArtifacts>>::type
-    read_only_artifacts_ = LAZY_INSTANCE_INITIALIZER;
-
-std::shared_ptr<ReadOnlyArtifacts> InitializeSharedReadOnlyArtifacts() {
-  std::shared_ptr<ReadOnlyArtifacts> artifacts;
-  if (COMPRESS_POINTERS_IN_MULTIPLE_CAGES_BOOL) {
-    artifacts = std::make_shared<PointerCompressedReadOnlyArtifacts>();
-  } else {
-    artifacts = std::make_shared<SingleCopyReadOnlyArtifacts>();
-  }
-  *read_only_artifacts_.Pointer() = artifacts;
-  return artifacts;
-}
-}  // namespace
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+// This ReadOnlyHeap instance will only be accessed by Isolates that are already
+// set up. As such it doesn't need to be guarded by a mutex.
+SharedReadOnlyHeap* SharedReadOnlyHeap::shared_ro_heap_ = nullptr;
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
 ReadOnlyHeap::~ReadOnlyHeap() {
 #ifdef V8_ENABLE_SANDBOX
   GetProcessWideCodePointerTable()->TearDownSpace(&code_pointer_space_);
 #endif
 }
-
-bool ReadOnlyHeap::IsSharedMemoryAvailable() {
-  static bool shared_memory_allocation_supported =
-      GetPlatformPageAllocator()->CanAllocateSharedPages();
-  return shared_memory_allocation_supported;
-}
-
-// This ReadOnlyHeap instance will only be accessed by Isolates that are already
-// set up. As such it doesn't need to be guarded by a mutex or shared_ptrs,
-// since an already set up Isolate will hold a shared_ptr to
-// read_only_artifacts_.
-SoleReadOnlyHeap* SoleReadOnlyHeap::shared_ro_heap_ = nullptr;
 
 // static
 void ReadOnlyHeap::SetUp(Isolate* isolate,
@@ -74,13 +44,16 @@ void ReadOnlyHeap::SetUp(Isolate* isolate,
 
   if (IsReadOnlySpaceShared()) {
     ReadOnlyHeap* ro_heap;
+    auto* group = isolate->isolate_group();
     if (read_only_snapshot_data != nullptr) {
       bool read_only_heap_created = false;
-      base::MutexGuard guard(read_only_heap_creation_mutex_.Pointer());
-      std::shared_ptr<ReadOnlyArtifacts> artifacts =
-          read_only_artifacts_.Get().lock();
+      base::MutexGuard guard(group->read_only_heap_creation_mutex());
+      auto* artifacts = group->read_only_artifacts();
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+      ReadOnlyArtifacts::read_only_artifacts_ = artifacts;
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
       if (!artifacts) {
-        artifacts = InitializeSharedReadOnlyArtifacts();
+        artifacts = group->InitializeReadOnlyArtifacts();
         artifacts->InitializeChecksum(read_only_snapshot_data);
         ro_heap = CreateInitialHeapForBootstrapping(isolate, artifacts);
         ro_heap->DeserializeIntoIsolate(isolate, read_only_snapshot_data,
@@ -89,14 +62,11 @@ void ReadOnlyHeap::SetUp(Isolate* isolate,
             isolate->next_unique_sfi_id());
         read_only_heap_created = true;
       } else {
-        // With pointer compression, there is one ReadOnlyHeap per Isolate.
-        // Without PC, there is only one shared between all Isolates.
-        ro_heap = artifacts->GetReadOnlyHeapForIsolate(isolate);
+        ro_heap = artifacts->read_only_heap();
         isolate->SetUpFromReadOnlyArtifacts(artifacts, ro_heap);
 #ifdef V8_COMPRESS_POINTERS
         isolate->external_pointer_table().SetUpFromReadOnlyArtifacts(
-            isolate->heap()->read_only_external_pointer_space(),
-            artifacts.get());
+            isolate->heap()->read_only_external_pointer_space(), artifacts);
 #endif  // V8_COMPRESS_POINTERS
       }
       artifacts->VerifyChecksum(read_only_snapshot_data,
@@ -106,11 +76,9 @@ void ReadOnlyHeap::SetUp(Isolate* isolate,
       // This path should only be taken in mksnapshot, should only be run once
       // before tearing down the Isolate that holds this ReadOnlyArtifacts and
       // is not thread-safe.
-      std::shared_ptr<ReadOnlyArtifacts> artifacts =
-          read_only_artifacts_.Get().lock();
+      auto* artifacts = group->read_only_artifacts();
       CHECK(!artifacts);
-      artifacts = InitializeSharedReadOnlyArtifacts();
-
+      artifacts = group->InitializeReadOnlyArtifacts();
       ro_heap = CreateInitialHeapForBootstrapping(isolate, artifacts);
 
       // Ensure the first read-only page ends up first in the cage.
@@ -177,43 +145,34 @@ void ReadOnlyHeap::OnCreateHeapObjectsComplete(Isolate* isolate) {
 #endif
 }
 
-// Only for compressed spaces
-ReadOnlyHeap::ReadOnlyHeap(ReadOnlyHeap* ro_heap, ReadOnlySpace* ro_space)
-    : read_only_space_(ro_space) {
-  DCHECK(ReadOnlyHeap::IsReadOnlySpaceShared());
-  DCHECK(COMPRESS_POINTERS_IN_MULTIPLE_CAGES_BOOL);
-}
-
 // static
 ReadOnlyHeap* ReadOnlyHeap::CreateInitialHeapForBootstrapping(
-    Isolate* isolate, std::shared_ptr<ReadOnlyArtifacts> artifacts) {
+    Isolate* isolate, ReadOnlyArtifacts* artifacts) {
   DCHECK(IsReadOnlySpaceShared());
 
-  std::unique_ptr<ReadOnlyHeap> ro_heap;
+  std::unique_ptr<SharedReadOnlyHeap> ro_heap;
   auto* ro_space = new ReadOnlySpace(isolate->heap());
-  if (COMPRESS_POINTERS_IN_MULTIPLE_CAGES_BOOL) {
-    ro_heap.reset(new ReadOnlyHeap(ro_space));
-  } else {
-    std::unique_ptr<SoleReadOnlyHeap> sole_ro_heap(
-        new SoleReadOnlyHeap(ro_space));
-    // The global shared ReadOnlyHeap is used with shared cage and if pointer
-    // compression is disabled.
-    SoleReadOnlyHeap::shared_ro_heap_ = sole_ro_heap.get();
-    ro_heap = std::move(sole_ro_heap);
-  }
+  std::unique_ptr<SharedReadOnlyHeap> shared_ro_heap(
+      new SharedReadOnlyHeap(ro_space));
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  isolate->isolate_group()->set_shared_ro_heap(shared_ro_heap.get());
+#else
+  SharedReadOnlyHeap::shared_ro_heap_ = shared_ro_heap.get();
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  ro_heap = std::move(shared_ro_heap);
   artifacts->set_read_only_heap(std::move(ro_heap));
   isolate->SetUpFromReadOnlyArtifacts(artifacts, artifacts->read_only_heap());
   return artifacts->read_only_heap();
 }
 
-void SoleReadOnlyHeap::InitializeIsolateRoots(Isolate* isolate) {
+void SharedReadOnlyHeap::InitializeIsolateRoots(Isolate* isolate) {
   void* const isolate_ro_roots =
       isolate->roots_table().read_only_roots_begin().location();
   std::memcpy(isolate_ro_roots, read_only_roots_,
               kEntriesCount * sizeof(Address));
 }
 
-void SoleReadOnlyHeap::InitializeFromIsolateRoots(Isolate* isolate) {
+void SharedReadOnlyHeap::InitializeFromIsolateRoots(Isolate* isolate) {
   void* const isolate_ro_roots =
       isolate->roots_table().read_only_roots_begin().location();
   std::memcpy(read_only_roots_, isolate_ro_roots,
@@ -224,9 +183,7 @@ void ReadOnlyHeap::InitFromIsolate(Isolate* isolate) {
   DCHECK(roots_init_complete_);
   read_only_space_->ShrinkPages();
   if (IsReadOnlySpaceShared()) {
-    std::shared_ptr<ReadOnlyArtifacts> artifacts(
-        *read_only_artifacts_.Pointer());
-
+    auto* artifacts = isolate->isolate_group()->read_only_artifacts();
     read_only_space()->DetachPagesAndAddToArtifacts(artifacts);
     artifacts->ReinstallReadOnlySpace(isolate);
 
@@ -252,7 +209,7 @@ void ReadOnlyHeap::OnHeapTearDown(Heap* heap) {
   delete read_only_space_;
 }
 
-void SoleReadOnlyHeap::OnHeapTearDown(Heap* heap) {
+void SharedReadOnlyHeap::OnHeapTearDown(Heap* heap) {
   // Do nothing as ReadOnlyHeap is shared between all Isolates.
 }
 
@@ -263,8 +220,12 @@ void ReadOnlyHeap::PopulateReadOnlySpaceStatistics(
   statistics->read_only_space_used_size_ = 0;
   statistics->read_only_space_physical_size_ = 0;
   if (IsReadOnlySpaceShared()) {
-    std::shared_ptr<ReadOnlyArtifacts> artifacts =
-        read_only_artifacts_.Get().lock();
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    auto* artifacts = ReadOnlyArtifacts::read_only_artifacts_;
+#else
+    auto* artifacts =
+        Isolate::Current()->isolate_group()->read_only_artifacts();
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
     if (artifacts) {
       auto* ro_space = artifacts->shared_read_only_space();
       statistics->read_only_space_size_ = ro_space->CommittedMemory();

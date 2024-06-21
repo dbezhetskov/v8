@@ -9,6 +9,7 @@
 #include "src/common/ptr-compr-inl.h"
 #include "src/execution/isolate.h"
 #include "src/heap/code-range.h"
+#include "src/heap/read-only-spaces.h"
 #include "src/heap/trusted-range.h"
 #include "src/sandbox/sandbox.h"
 #include "src/utils/memcopy.h"
@@ -49,20 +50,25 @@ struct PtrComprCageReservationParams
 };
 #endif  // V8_COMPRESS_POINTERS
 
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 // static
 IsolateGroup* IsolateGroup::GetProcessWideIsolateGroup() {
   static ::v8::base::LeakyObject<IsolateGroup> global_isolate_group_;
   return global_isolate_group_.get();
 }
-#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+
+IsolateGroup::IsolateGroup() {}
+
+IsolateGroup::~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
 
 // static
 void IsolateGroup::InitializeOncePerProcess() {
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
-  IsolateGroup *group = GetProcessWideIsolateGroup();
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  IsolateGroup* group = GetProcessWideIsolateGroup();
   DCHECK(!group->reservation_.IsReserved());
 
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
   PtrComprCageReservationParams params;
   base::AddressRegion existing_reservation;
 #ifdef V8_ENABLE_SANDBOX
@@ -100,6 +106,45 @@ void IsolateGroup::InitializeOncePerProcess() {
   group->trusted_pointer_compression_cage_ = &group->reservation_;
 #endif  // V8_ENABLE_SANDBOX
 #endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+
+#if !COMPRESS_POINTERS_BOOL
+  group->pointer_compression_cage_ = &group->reservation_;
+  group->trusted_pointer_compression_cage_ = &group->reservation_;
+  group->page_allocator_ = GetPlatformPageAllocator();
+#endif  // !COMPRESS_POINTERS_BOOL
+
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+}
+
+void IsolateGroup::ClearSharedSpaceIsolate() {
+  // Can only clear shared space isolate when no other isolates are live.
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // The only reference to the group is from the shared space isolate.
+  CHECK_EQ(1, reference_count_.load());
+#else
+  // For shared-cage mode and for mode without pointer compression
+  // the process wide isolate group holds a link too.
+  CHECK_EQ(2, reference_count_.load());
+#endif
+  DCHECK(has_shared_space_isolate());
+  shared_space_isolate_ = nullptr;
+}
+
+Address IsolateGroup::read_only_heap_addr() {
+  return reinterpret_cast<Address>(&shared_ro_heap_);
+}
+
+void IsolateGroup::MaybeRemoveReadOnlyArtifacts() {
+  // RC == 2 because isolate group also holds a link.
+  if (reference_count_.load() == 2) {
+    read_only_artifacts_.reset();
+  }
+}
+
+ReadOnlyArtifacts* IsolateGroup::InitializeReadOnlyArtifacts() {
+  DCHECK(!read_only_artifacts_);
+  read_only_artifacts_ = std::make_unique<ReadOnlyArtifacts>();
+  return read_only_artifacts_.get();
 }
 
 // static
@@ -130,27 +175,28 @@ IsolateGroup* IsolateGroup::New() {
 
 // static
 IsolateGroup* IsolateGroup::AcquireGlobal() {
-#if defined(V8_COMPRESS_POINTERS_IN_SHARED_CAGE)
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
   return GetProcessWideIsolateGroup()->Acquire();
 #else
   return nullptr;
-#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 }
 
 // static
 void IsolateGroup::ReleaseGlobal() {
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
   if (CodeRange* code_range = CodeRange::GetProcessWideCodeRange()) {
     code_range->Free();
   }
 
-  IsolateGroup *group = GetProcessWideIsolateGroup();
+  IsolateGroup* group = GetProcessWideIsolateGroup();
   CHECK_EQ(group->reference_count_.load(), 1);
+  CHECK(!group->has_shared_space_isolate());
   group->page_allocator_ = nullptr;
   group->trusted_pointer_compression_cage_ = nullptr;
   group->pointer_compression_cage_ = nullptr;
   group->reservation_.Free();
-#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 }
 
 }  // namespace internal

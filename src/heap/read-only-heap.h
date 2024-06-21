@@ -22,12 +22,12 @@ class SharedMemoryStatistics;
 
 namespace internal {
 
-class MemoryChunkMetadata;
 class Isolate;
 class PageMetadata;
 class ReadOnlyArtifacts;
 class ReadOnlyPageMetadata;
 class ReadOnlySpace;
+class SharedReadOnlyHeap;
 class SharedReadOnlySpace;
 class SnapshotData;
 
@@ -81,6 +81,7 @@ class ReadOnlyHeap {
   // to the shared one in case the latter is not initialized yet.
   V8_EXPORT_PRIVATE inline static ReadOnlyRoots EarlyGetReadOnlyRoots(
       Tagged<HeapObject> object);
+  V8_EXPORT_PRIVATE inline static SharedReadOnlyHeap* GetSharedReadOnlyHeap();
 
   ReadOnlySpace* read_only_space() const { return read_only_space_; }
 
@@ -88,11 +89,9 @@ class ReadOnlyHeap {
   CodePointerTable::Space* code_pointer_space() { return &code_pointer_space_; }
 #endif
 
-  // Returns whether the ReadOnlySpace will actually be shared taking into
-  // account whether shared memory is available with pointer compression.
   static constexpr bool IsReadOnlySpaceShared() {
-    return V8_SHARED_RO_HEAP_BOOL &&
-           (!COMPRESS_POINTERS_BOOL || COMPRESS_POINTERS_IN_SHARED_CAGE_BOOL);
+    // TODO(dbezhetskov): inline me.
+    return V8_SHARED_RO_HEAP_BOOL;
   }
 
   virtual void InitializeIsolateRoots(Isolate* isolate) {}
@@ -103,12 +102,11 @@ class ReadOnlyHeap {
 
  protected:
   friend class ReadOnlyArtifacts;
-  friend class PointerCompressedReadOnlyArtifacts;
 
   // Creates a new read-only heap and attaches it to the provided isolate. Only
   // used the first time when creating a ReadOnlyHeap for sharing.
   static ReadOnlyHeap* CreateInitialHeapForBootstrapping(
-      Isolate* isolate, std::shared_ptr<ReadOnlyArtifacts> artifacts);
+      Isolate* isolate, ReadOnlyArtifacts* artifacts);
   // Runs the read-only deserializer and calls InitFromIsolate to complete
   // read-only heap initialization.
   void DeserializeIntoIsolate(Isolate* isolate,
@@ -129,17 +127,10 @@ class ReadOnlyHeap {
   CodePointerTable::Space code_pointer_space_;
 #endif  // V8_ENABLE_SANDBOX
 
-  // Returns whether shared memory can be allocated and then remapped to
-  // additional addresses.
-  static bool IsSharedMemoryAvailable();
-
   explicit ReadOnlyHeap(ReadOnlySpace* ro_space);
-  ReadOnlyHeap(ReadOnlyHeap* ro_heap, ReadOnlySpace* ro_space);
 };
 
-// This is used without pointer compression when there is just a single
-// ReadOnlyHeap object shared between all Isolates.
-class SoleReadOnlyHeap : public ReadOnlyHeap {
+class SharedReadOnlyHeap : public ReadOnlyHeap {
  public:
   void InitializeIsolateRoots(Isolate* isolate) override;
   void InitializeFromIsolateRoots(Isolate* isolate) override;
@@ -149,9 +140,12 @@ class SoleReadOnlyHeap : public ReadOnlyHeap {
  private:
   friend class ReadOnlyHeap;
 
-  explicit SoleReadOnlyHeap(ReadOnlySpace* ro_space) : ReadOnlyHeap(ro_space) {}
+  explicit SharedReadOnlyHeap(ReadOnlySpace* ro_space)
+      : ReadOnlyHeap(ro_space) {}
   Address read_only_roots_[kEntriesCount];
-  V8_EXPORT_PRIVATE static SoleReadOnlyHeap* shared_ro_heap_;
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_EXPORT_PRIVATE static SharedReadOnlyHeap* shared_ro_heap_;
+#endif
 };
 
 enum class SkipFreeSpaceOrFiller {

@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "src/base/page-allocator.h"
+#include "src/base/platform/mutex.h"
 #include "src/common/globals.h"
 #include "src/flags/flags.h"
 #include "src/utils/allocation.h"
@@ -20,6 +21,10 @@ class LeakyObject;
 }  // namespace base
 
 namespace internal {
+
+class Isolate;
+class SharedReadOnlyHeap;
+class ReadOnlyArtifacts;
 
 // An IsolateGroup allows an API user to control which isolates get allocated
 // together in a shared pointer cage.
@@ -91,12 +96,44 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
     return GetTrustedPtrComprCage()->base();
   }
 
+  bool has_shared_space_isolate() const {
+    return shared_space_isolate_ != nullptr;
+  }
+
+  Isolate* shared_space_isolate() const {
+    DCHECK(has_shared_space_isolate());
+    return shared_space_isolate_;
+  }
+
+  void init_shared_space_isolate(Isolate* isolate) {
+    DCHECK(!has_shared_space_isolate());
+    shared_space_isolate_ = isolate;
+  }
+
+  void ClearSharedSpaceIsolate();
+
+  Address read_only_heap_addr();
+  void set_shared_ro_heap(SharedReadOnlyHeap* heap) { shared_ro_heap_ = heap; }
+
+  // Remove RO artifacts if there is only one isolate left.
+  void MaybeRemoveReadOnlyArtifacts();
+
+  base::Mutex* read_only_heap_creation_mutex() {
+    return &read_only_heap_creation_mutex_;
+  }
+
+  ReadOnlyArtifacts* read_only_artifacts() {
+    return read_only_artifacts_.get();
+  }
+
+  ReadOnlyArtifacts* InitializeReadOnlyArtifacts();
+
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
   static IsolateGroup* GetProcessWideIsolateGroup();
 
-  IsolateGroup() {}
-  ~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
+  IsolateGroup();
+  ~IsolateGroup();
   IsolateGroup(const IsolateGroup&) = delete;
   IsolateGroup& operator=(const IsolateGroup&) = delete;
 
@@ -109,6 +146,13 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   VirtualMemoryCage* trusted_pointer_compression_cage_ = nullptr;
   VirtualMemoryCage* pointer_compression_cage_ = nullptr;
   VirtualMemoryCage reservation_;
+
+  // Mutex used to ensure that ReadOnlyArtifacts creation is only done once.
+  base::Mutex read_only_heap_creation_mutex_;
+
+  std::unique_ptr<ReadOnlyArtifacts> read_only_artifacts_;
+  SharedReadOnlyHeap* shared_ro_heap_ = nullptr;
+  Isolate* shared_space_isolate_ = nullptr;
 };
 
 }  // namespace internal
