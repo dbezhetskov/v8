@@ -75,9 +75,16 @@ using V8HeapCompressionScheme = V8HeapCompressionSchemeImpl<MainCage>;
 class TrustedCage : public AllStatic {
   friend class V8HeapCompressionSchemeImpl<TrustedCage>;
 
-  // The TrustedCage is only used in the shared cage build configuration, so
-  // there is no need for a thread_local version.
+  // These non-inlined accessors to base_ field are used in component builds
+  // where cross-component access to thread local variables is not allowed.
+  static V8_EXPORT_PRIVATE Address base_non_inlined();
+  static V8_EXPORT_PRIVATE void set_base_non_inlined(Address base);
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
   static V8_EXPORT_PRIVATE uintptr_t base_ V8_CONSTINIT;
+#else
+  static thread_local uintptr_t base_ V8_CONSTINIT;
+#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
 };
 using TrustedSpaceCompressionScheme = V8HeapCompressionSchemeImpl<TrustedCage>;
 #else
