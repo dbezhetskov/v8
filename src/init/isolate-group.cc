@@ -114,6 +114,10 @@ void IsolateGroup::InitializeOncePerProcess() {
 #endif  // !COMPRESS_POINTERS_BOOL
 
 #endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+
+#if defined(V8_ENABLE_SANDBOX) && defined(V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES)
+  TrustedRange::EnsureProcessWideTrustedRange(kMaximalTrustedRangeSize);
+#endif
 }
 
 void IsolateGroup::ClearSharedSpaceIsolate() {
