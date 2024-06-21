@@ -380,7 +380,7 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
       metadata_pointer_table_[kMetadataPointerTableSize];
 
   V8_INLINE static MemoryChunkMetadata* FromIndex(uint32_t index);
-  static uint32_t MetadataTableIndex(Address chunk_address);
+  static uint32_t MetadataTableIndex(Address chunk_address, MemoryChunkMetadata* metadata);
 
   V8_INLINE static Address MetadataTableAddress() {
     return reinterpret_cast<Address>(metadata_pointer_table_);

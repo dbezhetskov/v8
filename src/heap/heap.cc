@@ -5627,6 +5627,13 @@ void Heap::SetUp(LocalHeap* main_thread_local_heap) {
       V8::FatalProcessOutOfMemory(
           isolate_, "Failed to reserve virtual memory for CodeRange");
     }
+
+#if V8_EXTERNAL_CODE_SPACE
+    ExternalCodeCompressionScheme::InitBase(
+        ExternalCodeCompressionScheme::PrepareCageBaseAddress(
+            code_range_->base()));
+#endif
+
 #endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
 
     LOG(isolate_,
