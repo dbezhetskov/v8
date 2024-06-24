@@ -4364,6 +4364,10 @@ void Isolate::SetIsolateThreadLocals(Isolate* isolate,
 #endif  // V8_EXTERNAL_CODE_SPACE
     ReadOnlyHeapAddrAccess::set_heap_addr(
         isolate->isolate_group()->read_only_heap_addr());
+#ifdef V8_ENABLE_SANDBOX
+    MemoryChunkMetadataAddrAccess::set_metadata_pointer_table(
+        isolate->isolate_group()->metadata_pointer_table());
+#endif
   } else {
     V8HeapCompressionScheme::InitBase(kNullAddress);
 #ifdef V8_EXTERNAL_CODE_SPACE

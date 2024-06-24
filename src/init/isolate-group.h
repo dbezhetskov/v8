@@ -128,6 +128,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
   ReadOnlyArtifacts* InitializeReadOnlyArtifacts();
 
+  Address metadata_pointer_table() { return reinterpret_cast<Address>(metadata_pointer_table_.get()); }
+
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
   static IsolateGroup* GetProcessWideIsolateGroup();
@@ -153,6 +155,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   std::unique_ptr<ReadOnlyArtifacts> read_only_artifacts_;
   SharedReadOnlyHeap* shared_ro_heap_ = nullptr;
   Isolate* shared_space_isolate_ = nullptr;
+
+  std::unique_ptr<Address[]> metadata_pointer_table_;
 };
 
 }  // namespace internal

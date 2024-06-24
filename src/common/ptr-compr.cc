@@ -53,6 +53,19 @@ Address ReadOnlyHeapAddrAccess::heap_addr() { return ro_heap_addr_; }
 void ReadOnlyHeapAddrAccess::set_heap_addr(Address heap_addr) {
   ro_heap_addr_ = heap_addr;
 }
+
+#ifdef V8_ENABLE_SANDBOX
+thread_local Address MemoryChunkMetadataAddrAccess::metadata_pointer_table_ = kNullAddress;
+
+// static
+Address MemoryChunkMetadataAddrAccess::metadata_pointer_table() { return metadata_pointer_table_; }
+
+// static
+void MemoryChunkMetadataAddrAccess::set_metadata_pointer_table(Address metadata_pointer_table) {
+  metadata_pointer_table_ = metadata_pointer_table;
+}
+#endif  // V8_ENABLE_SANDBOX
+
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
 #undef THREAD_LOCAL_IF_MULTICAGE

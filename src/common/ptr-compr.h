@@ -98,6 +98,14 @@ struct ReadOnlyHeapAddrAccess : public AllStatic {
   static V8_EXPORT_PRIVATE void set_heap_addr(Address heap_addr);
   static thread_local Address ro_heap_addr_ V8_CONSTINIT;
 };
+
+#ifdef V8_ENABLE_SANDBOX
+struct MemoryChunkMetadataAddrAccess : public AllStatic {
+  static V8_EXPORT_PRIVATE Address metadata_pointer_table();
+  static V8_EXPORT_PRIVATE void set_metadata_pointer_table(Address metadata_pointer_table);
+  static thread_local Address metadata_pointer_table_ V8_CONSTINIT;
+};
+#endif  // V8_ENABLE_SANDBOX
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
 // A compression scheme which can be passed if the only objects we ever expect
@@ -229,6 +237,9 @@ class PtrComprCageAccessScope final {
 #endif  // V8_EXTERNAL_CODE_SPACE
   const Address ro_heap_addr_;
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#ifdef V8_ENABLE_SANDBOX
+  const Address metadata_pointer_table_;
+#endif
 };
 
 }  // namespace v8::internal

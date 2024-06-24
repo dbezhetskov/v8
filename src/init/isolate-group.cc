@@ -58,7 +58,9 @@ IsolateGroup* IsolateGroup::GetProcessWideIsolateGroup() {
 }
 #endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
-IsolateGroup::IsolateGroup() {}
+IsolateGroup::IsolateGroup() {
+  metadata_pointer_table_ = std::make_unique<Address[]>(MemoryChunk::MetadataPointerTableSize());
+}
 
 IsolateGroup::~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
 

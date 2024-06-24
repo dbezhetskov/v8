@@ -333,6 +333,13 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
   static void ClearMetadataPointer(MemoryChunkMetadata* metadata);
 #endif
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  static constexpr size_t MetadataPointerTableSize() {
+    return kMetadataPointerTableSize;
+  }
+
+#endif
+
  private:
   // Flags that are only mutable from the main thread when no concurrent
   // component (e.g. marker, sweeper, compilation, allocation) is running.
@@ -376,15 +383,15 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
   static constexpr size_t kMetadataPointerTableSizeMask =
       kMetadataPointerTableSize - 1;
 
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
   static MemoryChunkMetadata*
       metadata_pointer_table_[kMetadataPointerTableSize];
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
   V8_INLINE static MemoryChunkMetadata* FromIndex(uint32_t index);
   static uint32_t MetadataTableIndex(Address chunk_address, MemoryChunkMetadata* metadata);
 
-  V8_INLINE static Address MetadataTableAddress() {
-    return reinterpret_cast<Address>(metadata_pointer_table_);
-  }
+  static Address MetadataTableAddress();
 
   // For access to the kMetadataPointerTableSizeMask;
   friend class CodeStubAssembler;
