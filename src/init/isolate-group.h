@@ -13,6 +13,7 @@
 #include "src/codegen/external-reference-table.h"
 #include "src/common/globals.h"
 #include "src/flags/flags.h"
+#include "src/heap/memory-chunk-constants.h"
 #include "src/utils/allocation.h"
 
 namespace v8 {
@@ -143,6 +144,7 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   ReadOnlyArtifacts* InitializeReadOnlyArtifacts();
 
   Address* external_ref_table() { return external_ref_table_; }
+  Address** metadata_pointer_table() { return metadata_pointer_table_; }
 
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
@@ -181,6 +183,7 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   Isolate* shared_space_isolate_ = nullptr;
 
   Address external_ref_table_[ExternalReferenceTable::kSizeIsolateIndependent] = {0};
+  Address* metadata_pointer_table_[MemoryChunkConstants::kMetadataPointerTableSize] = {0};
 };
 
 }  // namespace internal

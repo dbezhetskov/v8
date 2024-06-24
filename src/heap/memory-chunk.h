@@ -7,7 +7,7 @@
 
 #include "src/base/build_config.h"
 #include "src/base/functional.h"
-#include "src/flags/flags.h"
+#include "src/heap/memory-chunk-constants.h"
 
 #if V8_ENABLE_STICKY_MARK_BITS_BOOL
 #define UNREACHABLE_WITH_STICKY_MARK_BITS() UNREACHABLE()
@@ -356,35 +356,15 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
 #error The global metadata pointer table is incompatible with third party heap.
 #endif
 
-  static constexpr size_t kPagesInMainCage =
-      kPtrComprCageReservationSize / kRegularPageSize;
-  static constexpr size_t kPagesInCodeCage =
-      kMaximalCodeRangeSize / kRegularPageSize;
-  static constexpr size_t kPagesInTrustedCage =
-      kMaximalTrustedRangeSize / kRegularPageSize;
-
-  static constexpr size_t kMainCageMetadataOffset = 0;
-  static constexpr size_t kTrustedSpaceMetadataOffset =
-      kMainCageMetadataOffset + kPagesInMainCage;
-  static constexpr size_t kCodeRangeMetadataOffset =
-      kTrustedSpaceMetadataOffset + kPagesInTrustedCage;
-
-  static constexpr size_t kMetadataPointerTableSizeLog2 = base::bits::BitWidth(
-      kPagesInMainCage + kPagesInCodeCage + kPagesInTrustedCage);
-  static constexpr size_t kMetadataPointerTableSize =
-      1 << kMetadataPointerTableSizeLog2;
-  static constexpr size_t kMetadataPointerTableSizeMask =
-      kMetadataPointerTableSize - 1;
-
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
   static MemoryChunkMetadata*
-      metadata_pointer_table_[kMetadataPointerTableSize];
+      metadata_pointer_table_[MemoryChunkConstants::kMetadataPointerTableSize];
+#endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
   V8_INLINE static MemoryChunkMetadata* FromIndex(uint32_t index);
   static uint32_t MetadataTableIndex(Address chunk_address, MemoryChunkMetadata* metadata);
 
-  V8_INLINE static Address MetadataTableAddress() {
-    return reinterpret_cast<Address>(metadata_pointer_table_);
-  }
+  static Address MetadataTableAddress();
 
   // For access to the kMetadataPointerTableSizeMask;
   friend class CodeStubAssembler;

@@ -19,6 +19,7 @@ namespace v8 {
 namespace internal {
 
 IsolateGroup::IsolateGroup() {}
+
 IsolateGroup::~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
 
 #ifdef V8_COMPRESS_POINTERS
@@ -153,6 +154,9 @@ CodeRange* IsolateGroup::EnsureCodeRange(size_t requested_size)
 
 // static
 void IsolateGroup::InitializeIsolateIndependentExternalRefTable() {
+#if defined(V8_ENABLE_SANDBOX) && defined(V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES)
+  MemoryChunkMetadataAddrAccess::set_metadata_pointer_table(GetDefault()->metadata_pointer_table());
+#endif
   ExternalReferenceTable::InitializeOncePerIsolateGroup(GetDefault()->external_ref_table());
 }
 
@@ -199,6 +203,9 @@ IsolateGroup* IsolateGroup::New() {
 #endif
   CHECK_NOT_NULL(group->page_allocator_);
   ExternalReferenceTable::InitializeOncePerIsolateGroup(group->external_ref_table());
+#if defined(V8_ENABLE_SANDBOX) && defined(V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES)
+  MemoryChunkMetadataAddrAccess::set_metadata_pointer_table(group->metadata_pointer_table());
+#endif
   return group;
 }
 

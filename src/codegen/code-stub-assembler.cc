@@ -13278,7 +13278,7 @@ TNode<IntPtrT> CodeStubAssembler::PageMetadataFromMemoryChunk(
   TNode<Uint32T> index = Load<Uint32T>(
       address, IntPtrConstant(MemoryChunkLayout::kMetadataIndexOffset));
   index = Word32And(
-      index, UniqueUint32Constant(MemoryChunk::kMetadataPointerTableSizeMask));
+      index, UniqueUint32Constant(MemoryChunkConstants::kMetadataPointerTableSizeMask));
   TNode<IntPtrT> offset = ChangeInt32ToIntPtr(
       Word32Shl(index, UniqueUint32Constant(kSystemPointerSizeLog2)));
   TNode<IntPtrT> metadata = Load<IntPtrT>(table, offset);

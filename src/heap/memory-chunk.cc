@@ -5,6 +5,7 @@
 #include "src/heap/memory-chunk.h"
 
 #include "src/common/code-memory-access-inl.h"
+#include "src/common/ptr-compr-inl.h"
 #include "src/heap/base-space.h"
 #include "src/heap/large-page-metadata.h"
 #include "src/heap/page-metadata.h"
@@ -41,21 +42,35 @@ MemoryChunk::MemoryChunk(MainThreadFlags flags, MemoryChunkMetadata* metadata)
 #endif
 {
 #ifdef V8_ENABLE_SANDBOX
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  MemoryChunkMetadata** metadata_pointer_table = reinterpret_cast<MemoryChunkMetadata**>(MemoryChunkMetadataAddrAccess::metadata_pointer_table());
+  DCHECK_IMPLIES(metadata_pointer_table[metadata_index_] != nullptr,
+                 metadata_pointer_table[metadata_index_] == metadata);
+  metadata_pointer_table[metadata_index_] = metadata;
+#else
   DCHECK_IMPLIES(metadata_pointer_table_[metadata_index_] != nullptr,
                  metadata_pointer_table_[metadata_index_] == metadata);
   metadata_pointer_table_[metadata_index_] = metadata;
 #endif
+#endif
 }
 
 #ifdef V8_ENABLE_SANDBOX
-
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 MemoryChunkMetadata* MemoryChunk::metadata_pointer_table_[] = {nullptr};
+#endif
 
 // static
 void MemoryChunk::ClearMetadataPointer(MemoryChunkMetadata* metadata) {
   uint32_t metadata_index = MetadataTableIndex(metadata->ChunkAddress(), metadata);
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  MemoryChunkMetadata** metadata_pointer_table = reinterpret_cast<MemoryChunkMetadata**>(MemoryChunkMetadataAddrAccess::metadata_pointer_table());
+  DCHECK_EQ(metadata_pointer_table[metadata_index], metadata);
+  metadata_pointer_table[metadata_index] = nullptr;
+#else
   DCHECK_EQ(metadata_pointer_table_[metadata_index], metadata);
   metadata_pointer_table_[metadata_index] = nullptr;
+#endif
 }
 
 // static
@@ -65,27 +80,36 @@ uint32_t MemoryChunk::MetadataTableIndex(Address chunk_address, MemoryChunkMetad
       V8HeapCompressionScheme::base()) {
     static_assert(kPtrComprCageReservationSize == kPtrComprCageBaseAlignment);
     Tagged_t offset = V8HeapCompressionScheme::CompressAny(chunk_address);
-    DCHECK_LT(offset >> kPageSizeBits, kPagesInMainCage);
-    index = kMainCageMetadataOffset + (offset >> kPageSizeBits);
+    DCHECK_LT(offset >> kPageSizeBits, MemoryChunkConstants::kPagesInMainCage);
+    index = MemoryChunkConstants::kMainCageMetadataOffset + (offset >> kPageSizeBits);
   } else if (TrustedRange::GetProcessWideTrustedRange()->region().contains(
                  chunk_address)) {
     Tagged_t offset = TrustedSpaceCompressionScheme::CompressAny(chunk_address);
-    DCHECK_LT(offset >> kPageSizeBits, kPagesInTrustedCage);
-    index = kTrustedSpaceMetadataOffset + (offset >> kPageSizeBits);
+    DCHECK_LT(offset >> kPageSizeBits, MemoryChunkConstants::kPagesInTrustedCage);
+    index = MemoryChunkConstants::kTrustedSpaceMetadataOffset + (offset >> kPageSizeBits);
   } else {
     // FIXME(42204573): In the multi-sandbox case, need to map chunk address to
     // IsolateGroup.
     CodeRange* code_range = IsolateGroup::GetDefault()->GetCodeRange();
     DCHECK(code_range->region().contains(chunk_address));
     uint32_t offset = static_cast<uint32_t>(chunk_address - code_range->base());
-    DCHECK_LT(offset >> kPageSizeBits, kPagesInCodeCage);
-    index = kCodeRangeMetadataOffset + (offset >> kPageSizeBits);
+    DCHECK_LT(offset >> kPageSizeBits, MemoryChunkConstants::kPagesInCodeCage);
+    index = MemoryChunkConstants::kCodeRangeMetadataOffset + (offset >> kPageSizeBits);
   }
-  DCHECK_LT(index, kMetadataPointerTableSize);
+  DCHECK_LT(index, MemoryChunkConstants::kMetadataPointerTableSize);
   return index;
 }
 
-#endif
+// static
+Address MemoryChunk::MetadataTableAddress() {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  return reinterpret_cast<Address>(MemoryChunkMetadataAddrAccess::metadata_pointer_table());
+#else
+  return reinterpret_cast<Address>(metadata_pointer_table_);
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+}
+
+#endif  // V8_ENABLE_SANDBOX
 
 void MemoryChunk::InitializationMemoryFence() {
   base::SeqCst_MemoryFence();
@@ -100,6 +124,17 @@ void MemoryChunk::InitializationMemoryFence() {
   base::Release_Store(reinterpret_cast<base::AtomicWord*>(&metadata_),
                       reinterpret_cast<base::AtomicWord>(metadata_));
 #else
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  MemoryChunkMetadata** metadata_pointer_table = reinterpret_cast<MemoryChunkMetadata**>(MemoryChunkMetadataAddrAccess::metadata_pointer_table());
+  static_assert(sizeof(base::AtomicWord) == sizeof(metadata_pointer_table[0]));
+  static_assert(sizeof(base::Atomic32) == sizeof(metadata_index_));
+  base::Release_Store(reinterpret_cast<base::AtomicWord*>(
+                          &metadata_pointer_table[metadata_index_]),
+                      reinterpret_cast<base::AtomicWord>(
+                          metadata_pointer_table[metadata_index_]));
+  base::Release_Store(reinterpret_cast<base::Atomic32*>(&metadata_index_),
+                      metadata_index_);
+#else
   static_assert(sizeof(base::AtomicWord) == sizeof(metadata_pointer_table_[0]));
   static_assert(sizeof(base::Atomic32) == sizeof(metadata_index_));
   base::Release_Store(reinterpret_cast<base::AtomicWord*>(
@@ -108,6 +143,7 @@ void MemoryChunk::InitializationMemoryFence() {
                           metadata_pointer_table_[metadata_index_]));
   base::Release_Store(reinterpret_cast<base::Atomic32*>(&metadata_index_),
                       metadata_index_);
+#endif
 #endif
 #endif
 }
@@ -120,6 +156,17 @@ void MemoryChunk::SynchronizedLoad() const {
       base::Acquire_Load(reinterpret_cast<base::AtomicWord*>(
           &(const_cast<MemoryChunk*>(this)->metadata_))));
 #else
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  MemoryChunkMetadata** metadata_pointer_table = reinterpret_cast<MemoryChunkMetadata**>(MemoryChunkMetadataAddrAccess::metadata_pointer_table());
+  static_assert(sizeof(base::AtomicWord) == sizeof(metadata_pointer_table[0]));
+  static_assert(sizeof(base::Atomic32) == sizeof(metadata_index_));
+  uint32_t metadata_index =
+      base::Acquire_Load(reinterpret_cast<base::Atomic32*>(
+          &(const_cast<MemoryChunk*>(this)->metadata_index_)));
+  MemoryChunkMetadata* metadata = reinterpret_cast<MemoryChunkMetadata*>(
+      base::Acquire_Load(reinterpret_cast<base::AtomicWord*>(
+          &metadata_pointer_table[metadata_index])));
+#else
   static_assert(sizeof(base::AtomicWord) == sizeof(metadata_pointer_table_[0]));
   static_assert(sizeof(base::Atomic32) == sizeof(metadata_index_));
   uint32_t metadata_index =
@@ -128,6 +175,7 @@ void MemoryChunk::SynchronizedLoad() const {
   MemoryChunkMetadata* metadata = reinterpret_cast<MemoryChunkMetadata*>(
       base::Acquire_Load(reinterpret_cast<base::AtomicWord*>(
           &metadata_pointer_table_[metadata_index])));
+#endif
 #endif
   metadata->SynchronizedHeapLoad();
 }
