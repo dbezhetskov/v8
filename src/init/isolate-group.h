@@ -96,6 +96,10 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
   v8::PageAllocator* page_allocator() const { return page_allocator_; }
 
+  v8::PageAllocator* array_buffer_page_allocator() const {
+    return array_buffer_page_allocator_;
+  }
+
   VirtualMemoryCage* GetPtrComprCage() const {
     return pointer_compression_cage_;
   }
@@ -140,6 +144,14 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
   ReadOnlyArtifacts* InitializeReadOnlyArtifacts();
 
+#ifdef V8_ENABLE_SANDBOX
+  Sandbox* sandbox() const { return sandbox_; }
+#endif  // V8_ENABLE_SANDBOX
+
+  void SetArrayBufferPageAllocatorForTesting(v8::PageAllocator* allocator) {
+    array_buffer_page_allocator_ = allocator;
+  }
+
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
   static IsolateGroup* GetProcessWideIsolateGroup();
@@ -161,6 +173,7 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
   std::atomic<int> reference_count_{1};
   v8::PageAllocator* page_allocator_ = nullptr;
+  v8::PageAllocator* array_buffer_page_allocator_ = nullptr;
   VirtualMemoryCage* trusted_pointer_compression_cage_ = nullptr;
   VirtualMemoryCage* pointer_compression_cage_ = nullptr;
   VirtualMemoryCage reservation_;
@@ -171,6 +184,10 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   std::unique_ptr<ReadOnlyArtifacts> read_only_artifacts_;
   SharedReadOnlyHeap* shared_ro_heap_ = nullptr;
   Isolate* shared_space_isolate_ = nullptr;
+
+#ifdef V8_ENABLE_SANDBOX
+  Sandbox* sandbox_ = nullptr;
+#endif  // V8_ENABLE_SANDBOX
 };
 
 }  // namespace internal

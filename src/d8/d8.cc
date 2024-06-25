@@ -295,7 +295,7 @@ class MultiMappedAllocator : public ArrayBufferAllocatorBase {
     // sandbox's virtual address space to essentially just reserve a number of
     // OS pages inside the sandbox, but then using mremap to replace these
     // pages directly afterwards. In practice, this works fine however.
-    VirtualAddressSpace* vas = i::GetProcessWideSandbox()->address_space();
+    VirtualAddressSpace* vas = sandbox()->address_space();
     i::Address in_sandbox_page_reservation = vas->AllocatePages(
         VirtualAddressSpace::kNoHint, rounded_length,
         vas->allocation_granularity(), PagePermissions::kNoAccess);
@@ -353,7 +353,7 @@ class MultiMappedAllocator : public ArrayBufferAllocatorBase {
     munmap(real_alloc, kChunkSize);
     size_t rounded_length = RoundUp(length, kChunkSize);
 #ifdef V8_ENABLE_SANDBOX
-    VirtualAddressSpace* vas = i::GetProcessWideSandbox()->address_space();
+    VirtualAddressSpace* vas = sandbox()->address_space();
     vas->FreePages(reinterpret_cast<i::Address>(data), rounded_length);
 #else
     munmap(data, rounded_length);
@@ -361,10 +361,17 @@ class MultiMappedAllocator : public ArrayBufferAllocatorBase {
     regions_.erase(data);
   }
 
+#ifdef V8_ENABLE_SANDBOX
+  Sandbox* sandbox() const { return sandbox_; }
+#endif
+
  private:
   // Aiming for a "Huge Page" (2M on Linux x64) to go easy on the TLB.
   static constexpr size_t kChunkSize = 2 * 1024 * 1024;
 
+#ifdef V8_ENABLE_SANDBOX
+  Sandbox* sandbox_ = nullptr;
+#endif
   std::unordered_map<void*, void*> regions_;
   base::Mutex regions_mutex_;
 };

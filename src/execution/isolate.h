@@ -1194,6 +1194,10 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
 
   IsolateGroup* isolate_group() const { return isolate_group_; }
 
+#ifdef V8_ENABLE_SANDBOX
+  Sandbox* sandbox() const { return isolate_group()->sandbox(); }
+#endif  // V8_ENABLE_SANDBOX
+
   VirtualMemoryCage* GetPtrComprCage() const {
     return isolate_group()->GetPtrComprCage();
   }
