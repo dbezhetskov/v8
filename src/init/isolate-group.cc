@@ -120,6 +120,33 @@ void IsolateGroup::InitializeOncePerProcess() {
 #endif  // V8_EXTERNAL_CODE_SPACE
 }
 
+namespace {
+void InitCodeRangeOnce(std::unique_ptr<CodeRange>* code_range_member,
+                       v8::PageAllocator* page_allocator,
+                       size_t requested_size) {
+  CodeRange* code_range = new CodeRange();
+  if (!code_range->InitReservation(page_allocator, requested_size)) {
+    V8::FatalProcessOutOfMemory(
+        nullptr, "Failed to reserve virtual memory for CodeRange");
+  }
+  code_range_member->reset(code_range);
+#ifdef V8_EXTERNAL_CODE_SPACE
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+  ExternalCodeCompressionScheme::InitBase(
+      ExternalCodeCompressionScheme::PrepareCageBaseAddress(
+          code_range->base()));
+#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#endif  // V8_EXTERNAL_CODE_SPACE
+}
+}  // namespace
+
+CodeRange* IsolateGroup::EnsureCodeRange(size_t requested_size)
+{
+  base::CallOnce(&init_code_range_, InitCodeRangeOnce,
+                 &code_range_, page_allocator_, requested_size);
+  return code_range_.get();
+}
+
 // static
 IsolateGroup* IsolateGroup::New() {
   if (!CanCreateNewGroups()) {
@@ -141,15 +168,12 @@ IsolateGroup* IsolateGroup::New() {
 
 // static
 void IsolateGroup::ReleaseDefault() {
-  if (CodeRange* code_range = CodeRange::GetProcessWideCodeRange()) {
-    code_range->Free();
-  }
-
   IsolateGroup* group = GetDefault();
   CHECK_EQ(group->reference_count_.load(), 1);
   group->page_allocator_ = nullptr;
   group->trusted_pointer_compression_cage_ = nullptr;
   group->pointer_compression_cage_ = nullptr;
+  group->code_range_.reset();
   DCHECK_EQ(COMPRESS_POINTERS_BOOL, group->reservation_.IsReserved());
   if (COMPRESS_POINTERS_BOOL) group->reservation_.Free();
 }

@@ -73,7 +73,9 @@ uint32_t MemoryChunk::MetadataTableIndex(Address chunk_address) {
     DCHECK_LT(offset >> kPageSizeBits, kPagesInTrustedCage);
     index = kTrustedSpaceMetadataOffset + (offset >> kPageSizeBits);
   } else {
-    CodeRange* code_range = CodeRange::GetProcessWideCodeRange();
+    // FIXME(42204573): In the multi-sandbox case, need to map chunk address to
+    // IsolateGroup.
+    CodeRange* code_range = IsolateGroup::GetDefault()->GetCodeRange();
     DCHECK(code_range->region().contains(chunk_address));
     uint32_t offset = static_cast<uint32_t>(chunk_address - code_range->base());
     DCHECK_LT(offset >> kPageSizeBits, kPagesInCodeCage);

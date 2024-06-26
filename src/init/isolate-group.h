@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "src/base/page-allocator.h"
+#include "src/base/once.h"
 #include "src/common/globals.h"
 #include "src/flags/flags.h"
 #include "src/utils/allocation.h"
@@ -23,7 +24,9 @@ namespace internal {
 
 #ifdef V8_ENABLE_SANDBOX
 class Sandbox;
+class MemoryChunk;
 #endif
+class CodeRange;
 
 // An IsolateGroup allows an API user to control which isolates get allocated
 // together in a shared pointer cage.
@@ -97,9 +100,13 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
     return GetTrustedPtrComprCage()->base();
   }
 
+  CodeRange* EnsureCodeRange(size_t requested_size);
+  CodeRange* GetCodeRange() const { return code_range_.get(); }
+
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
   friend class PoolTest;
+  friend class MemoryChunk;
 
   IsolateGroup() {}
   ~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
@@ -121,6 +128,9 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   VirtualMemoryCage* trusted_pointer_compression_cage_ = nullptr;
   VirtualMemoryCage* pointer_compression_cage_ = nullptr;
   VirtualMemoryCage reservation_;
+
+  ::v8::base::OnceType init_code_range_ = V8_ONCE_INIT;
+  std::unique_ptr<CodeRange> code_range_;
 };
 
 }  // namespace internal

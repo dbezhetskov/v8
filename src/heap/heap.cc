@@ -5614,12 +5614,11 @@ void Heap::SetUp(LocalHeap* main_thread_local_heap) {
     // When a target requires the code range feature, we put all code objects in
     // a contiguous range of virtual address space, so that they can call each
     // other with near calls.
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifdef V8_COMPRESS_POINTERS
     // When sharing a pointer cage among Isolates, also share the
     // CodeRange. isolate_->page_allocator() is the process-wide pointer
     // compression cage's PageAllocator.
-    code_range_ = CodeRange::EnsureProcessWideCodeRange(
-        isolate_->page_allocator(), requested_size);
+    code_range_ = isolate_->isolate_group()->EnsureCodeRange(requested_size);
 #else
     code_range_ = std::make_unique<CodeRange>();
     if (!code_range_->InitReservation(isolate_->page_allocator(),
