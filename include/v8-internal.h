@@ -29,6 +29,7 @@ namespace internal {
 
 class Heap;
 class Isolate;
+class IsolateGroup;
 
 typedef uintptr_t Address;
 static constexpr Address kNullAddress = 0;
