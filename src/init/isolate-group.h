@@ -43,27 +43,29 @@ class Sandbox;
 // Isolate groups are useful only if pointer compression is enabled.  Otherwise,
 // the isolate could just allocate pages from the global system allocator;
 // there's no need to stay within any particular address range.  If pointer
-// compression is disabled, isolate groups are a no-op.
+// compression is disabled, there is just one global isolate group.
 //
 // Note that JavaScript objects can only be passed between isolates of the same
 // group.  Ensuring this invariant is the responsibility of the API user.
 class V8_EXPORT_PRIVATE IsolateGroup final {
  public:
+  // InitializeOncePerProcess should be called early on to initialize the
+  // process-wide group.
+  static IsolateGroup* AcquireDefault() { return GetDefault()->Acquire(); }
+
+  // Return true if we can create additional isolate groups: only the case if
+  // multiple pointer cages were configured in at build-time.
+  static constexpr bool CanCreateNewGroups() {
+    return COMPRESS_POINTERS_IN_MULTIPLE_CAGES_BOOL;
+  }
+
   // Create a new isolate group, allocating a fresh pointer cage if pointer
-  // compression is enabled.
+  // compression is enabled.  If new groups cannot be created in this build
+  // configuration, abort.
   //
   // The pointer cage for isolates in this group will be released when the
   // group's refcount drops to zero.  The group's initial refcount is 1.
-  //
-  // Note that if pointer compression is disabled, isolates are not grouped and
-  // no memory is associated with the isolate group.
   static IsolateGroup* New();
-
-  // Some configurations (e.g. V8_ENABLE_SANDBOX) put all isolates into a single
-  // group.  InitializeOncePerProcess should be called early on to initialize
-  // the process-wide group.  If this configuration has no process-wide isolate
-  // group, the result is nullptr.
-  static IsolateGroup* AcquireGlobal();
 
   static void InitializeOncePerProcess();
 
@@ -97,16 +99,16 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
-  static IsolateGroup* GetProcessWideIsolateGroup();
+  friend class PoolTest;
 
   IsolateGroup() {}
   ~IsolateGroup() { DCHECK_EQ(reference_count_.load(), 0); }
   IsolateGroup(const IsolateGroup&) = delete;
   IsolateGroup& operator=(const IsolateGroup&) = delete;
 
-  friend class PoolTest;
+  static IsolateGroup* GetDefault();
   // Only used for testing.
-  static void ReleaseGlobal();
+  static void ReleaseDefault();
 
 #ifdef V8_ENABLE_SANDBOX
   void Initialize(Sandbox* sandbox);
