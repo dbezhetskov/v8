@@ -67,8 +67,8 @@ class ExternalReferenceTable {
     return i * kEntrySize;
   }
 
-  static void InitializeOncePerProcess();
-  static const char* NameOfIsolateIndependentAddress(Address address);
+  static void InitializeOncePerIsolateGroup(Address* ref_addr_isolate_group);
+  static const char* NameOfIsolateIndependentAddress(Address address, Address* ref_addr_isolate_group);
 
   const char* NameFromOffset(uint32_t offset) {
     DCHECK_EQ(offset % kEntrySize, 0);
@@ -81,20 +81,20 @@ class ExternalReferenceTable {
   ExternalReferenceTable(const ExternalReferenceTable&) = delete;
   ExternalReferenceTable& operator=(const ExternalReferenceTable&) = delete;
 
-  void InitIsolateIndependent();  // Step 1.
+  void InitIsolateIndependent(Address* ref_addr_isolate_group);  // Step 1.
   void Init(Isolate* isolate);    // Step 2.
 
  private:
-  static void AddIsolateIndependent(Address address, int* index);
+  static void AddIsolateIndependent(Address address, int* index, Address* ref_addr_isolate_group);
 
-  static void AddIsolateIndependentReferences(int* index);
-  static void AddBuiltins(int* index);
-  static void AddRuntimeFunctions(int* index);
-  static void AddAccessors(int* index);
+  static void AddIsolateIndependentReferences(int* index, Address* ref_addr_isolate_group);
+  static void AddBuiltins(int* index, Address* ref_addr_isolate_group);
+  static void AddRuntimeFunctions(int* index, Address* ref_addr_isolate_group);
+  static void AddAccessors(int* index, Address* ref_addr_isolate_group);
 
   void Add(Address address, int* index);
 
-  void CopyIsolateIndependentReferences(int* index);
+  void CopyIsolateIndependentReferences(int* index, Address* ref_addr_isolate_group);
   void AddIsolateDependentReferences(Isolate* isolate, int* index);
   void AddIsolateAddresses(Isolate* isolate, int* index);
   void AddStubCache(Isolate* isolate, int* index);
