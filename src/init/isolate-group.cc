@@ -151,6 +151,11 @@ CodeRange* IsolateGroup::EnsureCodeRange(size_t requested_size)
   return code_range_.get();
 }
 
+// static
+void IsolateGroup::InitializeIsolateIndependentExternalRefTable() {
+  ExternalReferenceTable::InitializeOncePerIsolateGroup(GetDefault()->external_ref_table());
+}
+
 void IsolateGroup::ClearSharedSpaceIsolate() {
   // Can only clear shared space isolate when no other isolates are live, in
   // which case we will have one reference from the default group, and one from
@@ -193,6 +198,7 @@ IsolateGroup* IsolateGroup::New() {
   group->Initialize();
 #endif
   CHECK_NOT_NULL(group->page_allocator_);
+  ExternalReferenceTable::InitializeOncePerIsolateGroup(group->external_ref_table());
   return group;
 }
 
