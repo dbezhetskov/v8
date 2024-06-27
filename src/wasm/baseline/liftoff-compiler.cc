@@ -1945,9 +1945,7 @@ class LiftoffCompiler {
   LiftoffRegister GenerateCCall(ValueKind return_kind,
                                 const std::initializer_list<VarState> args,
                                 ExternalReference ext_ref) {
-    SCOPED_CODE_COMMENT(std::string{"Call extref: "} +
-                        ExternalReferenceTable::NameOfIsolateIndependentAddress(
-                            ext_ref.address()));
+    SCOPED_CODE_COMMENT(std::string{"Call extref: "});
     __ SpillAllRegisters();
     __ CallC(args, ext_ref);
     if (needs_gp_reg_pair(return_kind)) {
@@ -1961,9 +1959,7 @@ class LiftoffCompiler {
                                     ValueKind out_argument_kind,
                                     const std::initializer_list<VarState> args,
                                     ExternalReference ext_ref) {
-    SCOPED_CODE_COMMENT(std::string{"Call extref: "} +
-                        ExternalReferenceTable::NameOfIsolateIndependentAddress(
-                            ext_ref.address()));
+    SCOPED_CODE_COMMENT(std::string{"Call extref: "});
 
     // Before making a call, spill all cache registers.
     __ SpillAllRegisters();

@@ -112,8 +112,14 @@ void IsolateGroup::InitializeOncePerProcess() {
   group->trusted_pointer_compression_cage_ = &group->reservation_;
   group->page_allocator_ = GetPlatformPageAllocator();
 #endif  // !COMPRESS_POINTERS_BOOL
-
 #endif  // !V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+}
+
+// static
+void IsolateGroup::InitializeIsolateIndependentExternalRefTable() {
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  ExternalReferenceTable::InitializeOncePerIsolateGroup(GetProcessWideIsolateGroup()->external_ref_table());
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 }
 
 void IsolateGroup::ClearSharedSpaceIsolate() {
@@ -161,6 +167,7 @@ IsolateGroup* IsolateGroup::New() {
   group->pointer_compression_cage_ = &group->reservation_;
   group->trusted_pointer_compression_cage_ = &group->reservation_;
   group->page_allocator_ = group->pointer_compression_cage_->page_allocator();
+  ExternalReferenceTable::InitializeOncePerIsolateGroup(group->external_ref_table());
 #elif defined(V8_COMPRESS_POINTERS_IN_SHARED_CAGE)
   FATAL("Can't create new isolate groups with shared pointer compression cage");
 #else

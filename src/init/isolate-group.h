@@ -9,6 +9,7 @@
 
 #include "src/base/page-allocator.h"
 #include "src/base/platform/mutex.h"
+#include "src/codegen/external-reference-table.h"
 #include "src/common/globals.h"
 #include "src/flags/flags.h"
 #include "src/utils/allocation.h"
@@ -67,6 +68,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   static IsolateGroup* AcquireGlobal();
 
   static void InitializeOncePerProcess();
+
+  static void InitializeIsolateIndependentExternalRefTable();
 
   // Obtain a fresh reference on the isolate group.
   IsolateGroup* Acquire() {
@@ -128,6 +131,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
   ReadOnlyArtifacts* InitializeReadOnlyArtifacts();
 
+  Address* external_ref_table() { return external_ref_table_; }
+
  private:
   friend class ::v8::base::LeakyObject<IsolateGroup>;
   static IsolateGroup* GetProcessWideIsolateGroup();
@@ -153,6 +158,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   std::unique_ptr<ReadOnlyArtifacts> read_only_artifacts_;
   SharedReadOnlyHeap* shared_ro_heap_ = nullptr;
   Isolate* shared_space_isolate_ = nullptr;
+
+  Address external_ref_table_[ExternalReferenceTable::kSizeIsolateIndependent] = {0};
 };
 
 }  // namespace internal

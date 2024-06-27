@@ -239,9 +239,11 @@ void V8::Initialize() {
   wasm::WasmEngine::InitializeOncePerProcess();
 #endif  // V8_ENABLE_WEBASSEMBLY
 
-  ExternalReferenceTable::InitializeOncePerProcess();
-
   AdvanceStartupState(V8StartupState::kV8Initialized);
+
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  IsolateGroup::InitializeIsolateIndependentExternalRefTable();
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 }
 
 #undef DISABLE_FLAG
