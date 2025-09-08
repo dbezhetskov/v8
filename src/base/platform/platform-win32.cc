@@ -996,7 +996,8 @@ void CheckIsOOMError(int error) {
 // static
 void* OS::Allocate(void* hint, size_t size, size_t alignment,
                    MemoryPermission access,
-                   std::optional<SharedMemoryHandle> handle) {
+                   std::optional<SharedMemoryHandle> handle,
+                   MappingType mapping_type) {
   // File handles aren't supported.
   DCHECK(!handle.has_value());
 
@@ -1004,6 +1005,7 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
   DCHECK_EQ(0, size % page_size);
   DCHECK_EQ(0, alignment % page_size);
   DCHECK_LE(page_size, alignment);
+  DCHECK_EQ(mapping_type, MappingType::kPrivate);
   hint = AlignedAddress(hint, alignment);
 
   DWORD flags = (access == OS::MemoryPermission::kNoAccess)
@@ -1143,9 +1145,10 @@ bool OS::CanReserveAddressSpace() {
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    std::optional<SharedMemoryHandle> handle) {
+    std::optional<SharedMemoryHandle> handle, MappingType mapping_type) {
   // File handles aren't supported.
   DCHECK(!handle.has_value());
+  DCHECK_EQ(mapping_type, MappingType::kPrivate);
   CHECK(CanReserveAddressSpace());
 
   size_t page_size = AllocatePageSize();
