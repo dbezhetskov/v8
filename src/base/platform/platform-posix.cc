@@ -126,9 +126,8 @@ constexpr int kAppleArmPageSize = 1 << 14;
 
 const int kMmapFdOffset = 0;
 
-enum class PageType { kShared, kPrivate };
-
-int GetFlagsForMemoryPermission(OS::MemoryPermission access, PageType page_type,
+int GetFlagsForMemoryPermission(OS::MemoryPermission access,
+                                MappingType mapping_type,
                                 std::optional<SharedMemoryHandle> handle,
                                 bool fixed = false) {
   int flags = 0;
@@ -138,7 +137,7 @@ int GetFlagsForMemoryPermission(OS::MemoryPermission access, PageType page_type,
   if (fixed) {
     flags |= MAP_FIXED;
   }
-  flags |= (page_type == PageType::kShared) ? MAP_SHARED : MAP_PRIVATE;
+  flags |= (mapping_type == MappingType::kShared) ? MAP_SHARED : MAP_PRIVATE;
   if (access == OS::MemoryPermission::kNoAccess ||
       access == OS::MemoryPermission::kNoAccessWillJitLater) {
 #if !V8_OS_AIX && !V8_OS_FREEBSD && !V8_OS_QNX
@@ -162,11 +161,11 @@ int GetFlagsForMemoryPermission(OS::MemoryPermission access, PageType page_type,
 }
 
 void* Allocate(void* hint, size_t size, OS::MemoryPermission access,
-               PageType page_type,
+               MappingType mapping_type,
                std::optional<SharedMemoryHandle> handle = std::nullopt,
                bool fixed = false) {
   int prot = GetProtectionFromMemoryPermission(access);
-  int flags = GetFlagsForMemoryPermission(access, page_type, handle, fixed);
+  int flags = GetFlagsForMemoryPermission(access, mapping_type, handle, fixed);
 #if V8_OS_DARWIN
   // fd is used to pass vm_alloc flags to tag the region with the user
   // defined tag 255 This helps identify V8-allocated regions in memory analysis
@@ -464,7 +463,8 @@ void* OS::GetRandomMmapAddr() {
 // static
 void* OS::Allocate(void* hint, size_t size, size_t alignment,
                    MemoryPermission access,
-                   std::optional<SharedMemoryHandle> handle) {
+                   std::optional<SharedMemoryHandle> handle,
+                   MappingType mapping_type) {
   size_t page_size = AllocatePageSize();
   DCHECK_EQ(0, size % page_size);
   DCHECK_EQ(0, alignment % page_size);
@@ -472,8 +472,8 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
   // Add the maximum misalignment so we are guaranteed an aligned base address.
   size_t request_size = size + (alignment - page_size);
   request_size = RoundUp(request_size, OS::AllocatePageSize());
-  PageType page_type = PageType::kPrivate;
-  void* result = base::Allocate(hint, request_size, access, page_type, handle);
+  void* result =
+      base::Allocate(hint, request_size, access, mapping_type, handle);
   if (result == nullptr) return nullptr;
 
   // Unmap memory allocated before the aligned base address.
@@ -500,7 +500,7 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
     // We have to remap because the base of mapping must correspond to the base
     // of the the underlying file.
     uint8_t* new_base = reinterpret_cast<uint8_t*>(base::Allocate(
-        aligned_base, size, access, page_type, handle, true /* fixed */));
+        aligned_base, size, access, mapping_type, handle, true /* fixed */));
     if (new_base != aligned_base) {
       return nullptr;
     }
@@ -512,7 +512,7 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
 // static
 void* OS::AllocateShared(size_t size, MemoryPermission access) {
   DCHECK_EQ(0, size % AllocatePageSize());
-  return base::Allocate(nullptr, size, access, PageType::kShared);
+  return base::Allocate(nullptr, size, access, MappingType::kShared);
 }
 
 // static
@@ -695,18 +695,20 @@ bool OS::CanReserveAddressSpace() { return true; }
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    std::optional<SharedMemoryHandle> handle) {
+    std::optional<SharedMemoryHandle> handle, MappingType mapping_type) {
   // On POSIX, address space reservations are backed by private memory mappings.
   MemoryPermission permission = MemoryPermission::kNoAccess;
   if (max_permission == MemoryPermission::kReadWriteExecute) {
     permission = MemoryPermission::kNoAccessWillJitLater;
   }
 
-  void* reservation = Allocate(hint, size, alignment, permission, handle);
+  void* reservation =
+      Allocate(hint, size, alignment, permission, handle, mapping_type);
   if (!reservation && permission == MemoryPermission::kNoAccessWillJitLater) {
     // Retry without MAP_JIT, for example in case we are running on an old OS X.
     permission = MemoryPermission::kNoAccess;
-    reservation = Allocate(hint, size, alignment, permission, handle);
+    reservation =
+        Allocate(hint, size, alignment, permission, handle, mapping_type);
   }
 
   if (!reservation) return {};
