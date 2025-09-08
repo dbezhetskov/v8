@@ -783,6 +783,12 @@ enum class PagePermissions {
 };
 
 /**
+ * Whether modifications to memory are private to the mapping or propagated to
+ * the underlying SharedMemoryHandle.
+ */
+enum class MappingType { kShared, kPrivate };
+
+/**
  * Class to manage a virtual memory address space.
  *
  * This class represents a contiguous region of virtual address space in which
@@ -1059,13 +1065,17 @@ class VirtualAddressSpace {
    * returned subspace will use this file descriptor with 0 offset as the
    * space's underlying file.
    *
+   * \param mapping_type Optional indication as to whether the memory should be
+   * mapped as shared or private. The default is private.
+   *
    * \returns a new subspace or nullptr on failure.
    */
   virtual std::unique_ptr<VirtualAddressSpace> AllocateSubspace(
       Address hint, size_t size, size_t alignment,
       PagePermissions max_page_permissions,
       std::optional<MemoryProtectionKeyId> key = std::nullopt,
-      std::optional<SharedMemoryHandle> handle = std::nullopt) = 0;
+      std::optional<SharedMemoryHandle> handle = std::nullopt,
+      MappingType mapping_type = MappingType::kPrivate) = 0;
 
   //
   // TODO(v8) maybe refactor the methods below before stabilizing the API. For
