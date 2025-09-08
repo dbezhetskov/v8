@@ -150,7 +150,7 @@ std::unique_ptr<v8::VirtualAddressSpace> VirtualAddressSpace::AllocateSubspace(
     Address hint, size_t size, size_t alignment,
     PagePermissions max_page_permissions,
     std::optional<MemoryProtectionKeyId> key,
-    std::optional<SharedMemoryHandle> handle) {
+    std::optional<SharedMemoryHandle> handle, MappingType mapping_type) {
   DCHECK(IsAligned(alignment, allocation_granularity()));
   DCHECK(IsAligned(hint, alignment));
   DCHECK(IsAligned(size, allocation_granularity()));
@@ -158,7 +158,8 @@ std::unique_ptr<v8::VirtualAddressSpace> VirtualAddressSpace::AllocateSubspace(
   std::optional<AddressSpaceReservation> reservation =
       OS::CreateAddressSpaceReservation(
           reinterpret_cast<void*>(hint), size, alignment,
-          static_cast<OS::MemoryPermission>(max_page_permissions), handle);
+          static_cast<OS::MemoryPermission>(max_page_permissions), handle,
+          mapping_type);
   if (!reservation.has_value())
     return std::unique_ptr<v8::VirtualAddressSpace>();
   return std::unique_ptr<v8::VirtualAddressSpace>(new VirtualAddressSubspace(
@@ -381,7 +382,7 @@ VirtualAddressSubspace::AllocateSubspace(
     Address hint, size_t size, size_t alignment,
     PagePermissions max_page_permissions,
     std::optional<MemoryProtectionKeyId> key,
-    std::optional<SharedMemoryHandle> handle) {
+    std::optional<SharedMemoryHandle> handle, MappingType mapping_type) {
   // File backed mapping isn't supported for subspaces.
   DCHECK(!handle.has_value());
 #if V8_HAS_PKU_SUPPORT
@@ -396,6 +397,7 @@ VirtualAddressSubspace::AllocateSubspace(
   DCHECK(IsAligned(hint, alignment));
   DCHECK(IsAligned(size, allocation_granularity()));
   DCHECK(IsSubset(max_page_permissions, this->max_page_permissions()));
+  // FIXME: WTF are we doing here for mapping_type and handle ??
 
   MutexGuard guard(&mutex_);
 

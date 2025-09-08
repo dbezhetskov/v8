@@ -383,7 +383,8 @@ class V8_BASE_EXPORT OS {
 
   V8_WARN_UNUSED_RESULT static void* Allocate(
       void* address, size_t size, size_t alignment, MemoryPermission access,
-      std::optional<SharedMemoryHandle> handle = std::nullopt);
+      std::optional<SharedMemoryHandle> handle = std::nullopt,
+      MappingType mapping_type = MappingType::kPrivate);
 
   V8_WARN_UNUSED_RESULT static void* AllocateShared(size_t size,
                                                     MemoryPermission access);
@@ -422,7 +423,8 @@ class V8_BASE_EXPORT OS {
   CreateAddressSpaceReservation(
       void* hint, size_t size, size_t alignment,
       MemoryPermission max_permission,
-      std::optional<SharedMemoryHandle> handle = std::nullopt);
+      std::optional<SharedMemoryHandle> handle = std::nullopt,
+      MappingType mapping_type = MappingType::kPrivate);
 
   static void FreeAddressSpaceReservation(AddressSpaceReservation reservation);
 

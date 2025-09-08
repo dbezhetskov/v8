@@ -66,9 +66,9 @@ std::unique_ptr<VirtualAddressSpace> LsanVirtualAddressSpace::AllocateSubspace(
     Address hint, size_t size, size_t alignment,
     PagePermissions max_page_permissions,
     std::optional<MemoryProtectionKeyId> key,
-    std::optional<SharedMemoryHandle> handle) {
-  auto subspace = vas_->AllocateSubspace(hint, size, alignment,
-                                         max_page_permissions, key, handle);
+    std::optional<SharedMemoryHandle> handle, MappingType mapping_type) {
+  auto subspace = vas_->AllocateSubspace(
+      hint, size, alignment, max_page_permissions, key, handle, mapping_type);
 #if defined(LEAK_SANITIZER)
   if (subspace) {
     subspace = std::make_unique<LsanVirtualAddressSpace>(std::move(subspace));
