@@ -266,7 +266,8 @@ void OS::Initialize(const char* const gc_fake_mmap) {
 
 // static
 void* OS::Allocate(void* address, size_t size, size_t alignment,
-                   MemoryPermission access, PlatformSharedMemoryHandle handle) {
+                   MemoryPermission access, PlatformSharedMemoryHandle handle,
+                   bool is_shared) {
   // File handles aren't supported.
   DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
   PlacementMode placement =
@@ -340,7 +341,7 @@ bool OS::CanReserveAddressSpace() { return true; }
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    PlatformSharedMemoryHandle handle) {
+    PlatformSharedMemoryHandle handle, bool is_shared) {
   DCHECK_EQ(0, reinterpret_cast<Address>(hint) % alignment);
   zx::vmar child;
   zx_vaddr_t child_addr;

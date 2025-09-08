@@ -148,8 +148,8 @@ void VirtualAddressSpace::FreeSharedPages(Address address, size_t size) {
 std::unique_ptr<v8::VirtualAddressSpace> VirtualAddressSpace::AllocateSubspace(
     Address hint, size_t size, size_t alignment,
     PagePermissions max_page_permissions,
-    std::optional<MemoryProtectionKeyId> key,
-    PlatformSharedMemoryHandle handle) {
+    std::optional<MemoryProtectionKeyId> key, PlatformSharedMemoryHandle handle,
+    bool is_shared) {
   DCHECK(IsAligned(alignment, allocation_granularity()));
   DCHECK(IsAligned(hint, alignment));
   DCHECK(IsAligned(size, allocation_granularity()));
@@ -157,7 +157,8 @@ std::unique_ptr<v8::VirtualAddressSpace> VirtualAddressSpace::AllocateSubspace(
   std::optional<AddressSpaceReservation> reservation =
       OS::CreateAddressSpaceReservation(
           reinterpret_cast<void*>(hint), size, alignment,
-          static_cast<OS::MemoryPermission>(max_page_permissions), handle);
+          static_cast<OS::MemoryPermission>(max_page_permissions), handle,
+          is_shared);
   if (!reservation.has_value())
     return std::unique_ptr<v8::VirtualAddressSpace>();
   return std::unique_ptr<v8::VirtualAddressSpace>(new VirtualAddressSubspace(
@@ -378,8 +379,8 @@ std::unique_ptr<v8::VirtualAddressSpace>
 VirtualAddressSubspace::AllocateSubspace(
     Address hint, size_t size, size_t alignment,
     PagePermissions max_page_permissions,
-    std::optional<MemoryProtectionKeyId> key,
-    PlatformSharedMemoryHandle handle) {
+    std::optional<MemoryProtectionKeyId> key, PlatformSharedMemoryHandle handle,
+    bool is_shared) {
   // File backed mapping isn't supported for subspaces.
   DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
 #if V8_HAS_PKU_SUPPORT

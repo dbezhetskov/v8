@@ -74,7 +74,8 @@ class V8_BASE_EXPORT EmulatedVirtualAddressSubspace final
       Address hint, size_t size, size_t alignment,
       PagePermissions max_page_permissions,
       std::optional<MemoryProtectionKeyId> key = std::nullopt,
-      PlatformSharedMemoryHandle handle = kInvalidSharedMemoryHandle) override;
+      PlatformSharedMemoryHandle handle = kInvalidSharedMemoryHandle,
+      bool is_shared = false) override;
 
   bool RecommitPages(Address address, size_t size,
                      PagePermissions permissions) override;
