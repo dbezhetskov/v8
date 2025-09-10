@@ -83,7 +83,9 @@ class V8_EXPORT_PRIVATE Sandbox {
    * address space can be allocated for even a partially-reserved sandbox, then
    * this method will fail with an OOM crash.
    */
-  void Initialize(v8::VirtualAddressSpace* vas);
+  void Initialize(
+      v8::VirtualAddressSpace* vas,
+      std::optional<SharedMemoryHandle> backing_store = std::nullopt);
 
   /**
    * Tear down this sandbox.
@@ -239,6 +241,14 @@ class V8_EXPORT_PRIVATE Sandbox {
   static Sandbox* New(v8::VirtualAddressSpace* vas);
 
 #ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  /**
+   * Create a clone of the whole sandbox.
+   *
+   * The resulted clone will use copy-on-write
+   * copy of the original sandbox.
+   */
+  Sandbox* Clone(v8::VirtualAddressSpace* vas);
+
 #ifdef USING_V8_SHARED_PRIVATE
   static Sandbox* current() { return current_non_inlined(); }
   static void set_current(Sandbox* sandbox) {
@@ -272,8 +282,9 @@ class V8_EXPORT_PRIVATE Sandbox {
   // regions. The provided virtual address space must be able to allocate
   // subspaces. The size must be a multiple of the allocation granularity of the
   // virtual memory space.
-  bool Initialize(v8::VirtualAddressSpace* vas, size_t size,
-                  bool use_guard_regions);
+  bool Initialize(
+      v8::VirtualAddressSpace* vas, size_t size, bool use_guard_regions,
+      std::optional<SharedMemoryHandle> backing_store = std::nullopt);
 
   // Used when reserving virtual memory is too expensive. A partially reserved
   // sandbox does not reserve all of its virtual memory and so doesn't have the
@@ -330,6 +341,7 @@ class V8_EXPORT_PRIVATE Sandbox {
   static bool first_four_gb_of_address_space_are_reserved_;
 
 #ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  std::optional<SharedMemoryHandle> backing_store_;
   thread_local static Sandbox* current_;
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 };
