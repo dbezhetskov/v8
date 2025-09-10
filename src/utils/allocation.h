@@ -155,7 +155,9 @@ V8_EXPORT_PRIVATE
 V8_WARN_UNUSED_RESULT void* AllocatePages(
     v8::PageAllocator* page_allocator, size_t size, size_t alignment,
     PageAllocator::Permission access,
-    v8::PageAllocator::AllocationHint hint = {});
+    v8::PageAllocator::AllocationHint hint = {},
+    std::optional<SharedMemoryHandle> backing_store = std::nullopt,
+    MappingType mapping_type = MappingType::kPrivate);
 
 // Frees memory allocated by a call to AllocatePages. |address| and |size| must
 // be multiples of AllocatePageSize().
@@ -205,7 +207,9 @@ class VirtualMemory final {
   V8_EXPORT_PRIVATE VirtualMemory(
       v8::PageAllocator* page_allocator, size_t size,
       PageAllocator::AllocationHint hint = {}, size_t alignment = 1,
-      PageAllocator::Permission permissions = PageAllocator::kNoAccess);
+      PageAllocator::Permission permissions = PageAllocator::kNoAccess,
+      std::optional<SharedMemoryHandle> handle = std::nullopt,
+      MappingType mapping_type = MappingType::kPrivate);
 
   // Construct a virtual memory by assigning it some already mapped address
   // and size.
@@ -395,6 +399,8 @@ class VirtualMemoryCage {
     PageAllocator::Permission permissions;
     base::PageInitializationMode page_initialization_mode;
     base::PageFreeingMode page_freeing_mode;
+    std::optional<SharedMemoryHandle> backing_store = std::nullopt;
+    MappingType mapping_type = MappingType::kPrivate;
 
     static constexpr size_t kAnyBaseAlignment = 1;
   };

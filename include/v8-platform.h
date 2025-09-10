@@ -541,6 +541,12 @@ static constexpr PlatformSharedMemoryHandle kInvalidSharedMemoryHandle =
     std::nullopt;
 
 /**
+ * Whether modifications to memory are private to the mapping or propagated to
+ * the underlying SharedMemoryHandle.
+ */
+enum class MappingType { kShared, kPrivate };
+
+/**
  * A V8 memory page allocator.
  *
  * Can be implemented by an embedder to manage large host OS allocations.
@@ -633,6 +639,20 @@ class PageAllocator {
   virtual void* AllocatePages(size_t length, size_t alignment,
                               Permission permissions, AllocationHint hint) {
     return AllocatePages(hint.Address(), length, alignment, permissions);
+  }
+
+  /**
+   * Allocates memory in range with the given alignment and permission. In
+   * addition to AllocatePages above, the allocation may be made using a
+   * provided shared memory handle, if provided.
+   */
+  virtual void* AllocatePages(size_t length, size_t alignment,
+                              Permission permissions, AllocationHint hint,
+                              std::optional<SharedMemoryHandle> backing_store,
+                              MappingType mapping_type) {
+    if (!backing_store.has_value())
+      return AllocatePages(length, alignment, permissions, hint);
+    return nullptr;
   }
 
   /**
@@ -807,12 +827,6 @@ enum class PagePermissions {
   kReadWriteExecute,
   kReadExecute,
 };
-
-/**
- * Whether modifications to memory are private to the mapping or propagated to
- * the underlying SharedMemoryHandle.
- */
-enum class MappingType { kShared, kPrivate };
 
 /**
  * Class to manage a virtual memory address space.
