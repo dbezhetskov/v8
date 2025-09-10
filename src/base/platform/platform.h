@@ -229,7 +229,7 @@ class V8_BASE_EXPORT OS {
 
   // Helpers to create shared memory objects. Currently only used for testing.
   static std::optional<SharedMemoryHandle> CreateSharedMemoryHandleForTesting(
-      size_t size);
+      size_t size, std::optional<const char*> name = std::nullopt);
   static void DestroySharedMemoryHandle(SharedMemoryHandle handle);
 
   static bool HasLazyCommits();

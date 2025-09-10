@@ -42,7 +42,7 @@ void* PageAllocator::GetRandomMmapAddr() {
   return base::OS::GetRandomMmapAddr();
 }
 
-void* PageAllocator::AllocatePages(void* hint, size_t size, size_t alignment,
+void* PageAllocator::AllocatePages(void* hint, size_t length, size_t alignment,
                                    PageAllocator::Permission access) {
 #if !V8_HAS_PTHREAD_JIT_WRITE_PROTECT && !V8_HAS_BECORE_JIT_WRITE_PROTECT
   // kNoAccessWillJitLater is only used on Apple Silicon. Map it to regular
@@ -52,8 +52,24 @@ void* PageAllocator::AllocatePages(void* hint, size_t size, size_t alignment,
     access = PageAllocator::kNoAccess;
   }
 #endif
-  return base::OS::Allocate(hint, size, alignment,
+  return base::OS::Allocate(hint, length, alignment,
                             static_cast<base::OS::MemoryPermission>(access));
+}
+
+void* PageAllocator::AllocatePages(
+    size_t length, size_t alignment, Permission access, AllocationHint hint,
+    std::optional<SharedMemoryHandle> backing_store, MappingType mapping_type) {
+#if !V8_HAS_PTHREAD_JIT_WRITE_PROTECT && !V8_HAS_BECORE_JIT_WRITE_PROTECT
+  // kNoAccessWillJitLater is only used on Apple Silicon. Map it to regular
+  // kNoAccess on other platforms, so code doesn't have to handle both enum
+  // values.
+  if (access == PageAllocator::kNoAccessWillJitLater) {
+    access = PageAllocator::kNoAccess;
+  }
+#endif
+  return base::OS::Allocate(hint.Address(), length, alignment,
+                            static_cast<base::OS::MemoryPermission>(access),
+                            backing_store, mapping_type);
 }
 
 class SharedMemoryMapping : public ::v8::PageAllocator::SharedMemoryMapping {
