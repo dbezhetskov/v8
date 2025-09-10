@@ -33,6 +33,12 @@ class V8_BASE_EXPORT PageAllocator
   void* AllocatePages(void* hint, size_t size, size_t alignment,
                       PageAllocator::Permission access) override;
 
+  void* AllocatePages(size_t length, size_t alignment,
+                      PageAllocator::Permission access,
+                      PageAllocator::AllocationHint hint,
+                      std::optional<SharedMemoryHandle> handle,
+                      MappingType mapping_type) override;
+
   bool CanAllocateSharedPages() override;
 
   std::unique_ptr<v8::PageAllocator::SharedMemory> AllocateSharedPages(

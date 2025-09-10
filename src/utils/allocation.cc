@@ -166,7 +166,9 @@ void* GetRandomMmapAddr() {
 
 void* AllocatePages(v8::PageAllocator* page_allocator, size_t size,
                     size_t alignment, PageAllocator::Permission access,
-                    PageAllocator::AllocationHint hint) {
+                    PageAllocator::AllocationHint hint,
+                    std::optional<SharedMemoryHandle> handle,
+                    MappingType mapping_type) {
   DCHECK_NOT_NULL(page_allocator);
   DCHECK(IsAligned(reinterpret_cast<Address>(hint.Address()), alignment));
   DCHECK(IsAligned(size, page_allocator->AllocatePageSize()));
@@ -176,7 +178,8 @@ void* AllocatePages(v8::PageAllocator* page_allocator, size_t size,
   }
   void* result = nullptr;
   for (int i = 0; i < kAllocationTries; ++i) {
-    result = page_allocator->AllocatePages(size, alignment, access, hint);
+    result = page_allocator->AllocatePages(size, alignment, access, hint,
+                                           handle, mapping_type);
     if (V8_LIKELY(result != nullptr)) break;
     OnCriticalMemoryPressure();
   }
@@ -218,14 +221,17 @@ VirtualMemory::VirtualMemory() = default;
 VirtualMemory::VirtualMemory(v8::PageAllocator* page_allocator, size_t size,
                              PageAllocator::AllocationHint hint,
                              size_t alignment,
-                             PageAllocator::Permission permissions)
+                             PageAllocator::Permission permissions,
+                             std::optional<SharedMemoryHandle> handle,
+                             MappingType mapping_type)
     : page_allocator_(page_allocator) {
   DCHECK_NOT_NULL(page_allocator);
   DCHECK(IsAligned(size, page_allocator_->CommitPageSize()));
   const size_t page_size = page_allocator_->AllocatePageSize();
   alignment = RoundUp(alignment, page_size);
-  Address address = reinterpret_cast<Address>(AllocatePages(
-      page_allocator_, RoundUp(size, page_size), alignment, permissions, hint));
+  Address address = reinterpret_cast<Address>(
+      AllocatePages(page_allocator_, RoundUp(size, page_size), alignment,
+                    permissions, hint, handle, mapping_type));
   if (address != kNullAddress) {
     DCHECK(IsAligned(address, alignment));
     region_ = base::AddressRegion(address, size);
@@ -339,26 +345,30 @@ bool VirtualMemoryCage::InitReservation(
     CHECK_EQ(existing_reservation.size(), params.reservation_size);
     CHECK(params.base_alignment == ReservationParams::kAnyBaseAlignment ||
           IsAligned(existing_reservation.begin(), params.base_alignment));
+    DCHECK(!params.backing_store.has_value());
     reservation_ =
         VirtualMemory(params.page_allocator, existing_reservation.begin(),
                       existing_reservation.size());
     base_ = reservation_.address();
   } else {
-    Address hint = params.requested_start_hint;
+    Address hint_address = params.requested_start_hint;
     // Require the hint to be properly aligned because here it's not clear
     // anymore whether it should be rounded up or down.
-    CHECK(IsAligned(hint, params.base_alignment));
+    CHECK(IsAligned(hint_address, params.base_alignment));
+    PageAllocator::AllocationHint hint =
+        v8::PageAllocator::AllocationHint().WithAddress(
+            reinterpret_cast<void*>(hint_address));
     VirtualMemory reservation(params.page_allocator, params.reservation_size,
-                              v8::PageAllocator::AllocationHint().WithAddress(
-                                  reinterpret_cast<void*>(hint)),
-                              params.base_alignment, params.permissions);
+                              hint, params.base_alignment, params.permissions,
+                              params.backing_store, params.mapping_type);
     // The virtual memory reservation fails only due to OOM.
     if (!reservation.IsReserved()) return false;
 
     reservation_ = std::move(reservation);
-    base_ = reservation_.address();
-    CHECK_EQ(reservation_.size(), params.reservation_size);
   }
+
+  base_ = reservation_.address();
+  CHECK_EQ(reservation_.size(), params.reservation_size);
   CHECK_NE(base_, kNullAddress);
   CHECK(IsAligned(base_, params.base_alignment));
 
