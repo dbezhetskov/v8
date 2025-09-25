@@ -229,7 +229,7 @@ class V8_BASE_EXPORT OS {
 
   // Helpers to create shared memory objects. Currently only used for testing.
   static PlatformSharedMemoryHandle CreateSharedMemoryHandleForTesting(
-      size_t size);
+      size_t size, const char* name = nullptr);
   static void DestroySharedMemoryHandle(PlatformSharedMemoryHandle handle);
 
   static bool HasLazyCommits();
