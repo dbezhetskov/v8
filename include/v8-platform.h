@@ -21,6 +21,10 @@ namespace v8 {
 
 class Isolate;
 
+// Opaque type representing a handle to a shared memory region.
+using PlatformSharedMemoryHandle = intptr_t;
+static constexpr PlatformSharedMemoryHandle kInvalidSharedMemoryHandle = -1;
+
 // Valid priorities supported by the task scheduling infrastructure.
 enum class TaskPriority : uint8_t {
   /**
@@ -542,6 +546,17 @@ class PageAllocator {
   }
 
   /**
+   * Allocates pages with specifying underlying file.
+   */
+  virtual void* AllocateFileBackedPages(void* address, size_t length,
+                                        size_t alignment,
+                                        Permission permissions,
+                                        PlatformSharedMemoryHandle handle,
+                                        bool is_private) {
+    return nullptr;
+  }
+
+  /**
    * Resizes the previously allocated memory at the given address. Returns true
    * if the allocation could be resized. Returns false if this operation is
    * either not supported or the object could not be resized in-place.
@@ -702,10 +717,6 @@ class ThreadIsolatedAllocator {
    */
   virtual int Pkey() const { return -1; }
 };
-
-// Opaque type representing a handle to a shared memory region.
-using PlatformSharedMemoryHandle = intptr_t;
-static constexpr PlatformSharedMemoryHandle kInvalidSharedMemoryHandle = -1;
 
 // Conversion routines from the platform-dependent shared memory identifiers
 // into the opaque PlatformSharedMemoryHandle type. These use the underlying

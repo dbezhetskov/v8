@@ -207,6 +207,17 @@ class VirtualMemory final {
       PageAllocator::AllocationHint hint = {}, size_t alignment = 1,
       PageAllocator::Permission permissions = PageAllocator::kNoAccess);
 
+  // Reserves virtual memory containing an area of the given size that is
+  // aligned per |alignment| rounded up to the |page_allocator|'s allocate page
+  // size. The |size| must be aligned with |page_allocator|'s commit page size.
+  // This may not be at the position returned by address().
+  // It uses handle as underlying file for the virtual memory.
+  V8_EXPORT_PRIVATE VirtualMemory(
+      PlatformSharedMemoryHandle handle, bool is_private,
+      v8::PageAllocator* page_allocator, size_t size,
+      PageAllocator::AllocationHint hint = {}, size_t alignment = 1,
+      PageAllocator::Permission permissions = PageAllocator::kNoAccess);
+
   // Construct a virtual memory by assigning it some already mapped address
   // and size.
   VirtualMemory(v8::PageAllocator* page_allocator, Address address, size_t size)
@@ -408,6 +419,10 @@ class VirtualMemoryCage {
   bool InitReservation(
       const ReservationParams& params,
       base::AddressRegion existing_reservation = base::AddressRegion());
+
+  bool InitReservation(const ReservationParams& params,
+                       PlatformSharedMemoryHandle underlying_memory_file,
+                       bool is_private = false);
 
   void Free();
 
