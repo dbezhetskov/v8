@@ -221,6 +221,9 @@ Address ExternalCodeCompressionScheme::DecompressTagged(Tagged_t raw_value) {
   DCHECK_WITH_MSG(cage_base != kNullAddress,
                   "ExternalCodeCompressionScheme::base is not initialized for "
                   "current thread");
+
+  // For multi-cage mode code cage is 4Gb aligned.
+  DCHECK_EQ(static_cast<uint32_t>(cage_base), 0u);
 #endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
   V8_ASSUME((cage_base & kMinExpectedOSPageSizeMask) == cage_base);
 
@@ -231,6 +234,10 @@ Address ExternalCodeCompressionScheme::DecompressTagged(Tagged_t raw_value) {
   // the decompressed value is off by 4GB.
   if (static_cast<intptr_t>(diff) < 0) {
     diff += size_t{4} * GB;
+
+    // It can't happen because code cage is 4Gb aligned
+    // in multi-cage configuration.
+    DCHECK(!COMPRESS_POINTERS_IN_MULTIPLE_CAGES_BOOL);
   }
   DCHECK(is_uint32(diff));
   Address result = cage_base + diff;
