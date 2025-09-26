@@ -169,8 +169,15 @@ bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
   VirtualMemoryCage::ReservationParams params;
   params.page_allocator = page_allocator;
   params.reservation_size = requested;
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // To share code cage between two isolate groups
+  // we have to use 4GB alignment to make addresses
+  // to code cage base independent.
+  params.base_alignment = size_t{4} * GB;
+#else
   params.base_alignment =
       VirtualMemoryCage::ReservationParams::kAnyBaseAlignment;
+#endif
   params.page_size = kPageSize;
   if (v8_flags.jitless) {
     params.permissions = PageAllocator::Permission::kNoAccess;
@@ -251,6 +258,9 @@ bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
   if (!IsReserved()) {
     Address the_hint = GetCodeRangeAddressHint()->GetAddressHint(
         requested, allocate_page_size);
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    the_hint = RoundUp(the_hint, params.base_alignment);
+#endif
     // Last resort, use whatever region we could get with minimum constraints.
     params.requested_start_hint = the_hint;
     if (!VirtualMemoryCage::InitReservation(params)) {
