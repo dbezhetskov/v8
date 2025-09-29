@@ -144,7 +144,7 @@ class CodeRange final : public VirtualMemoryCage {
   // flag specifies if the reservation will live until the end of the process
   // and can be sealed.
   bool InitReservation(v8::PageAllocator* page_allocator, size_t requested,
-                       bool immutable);
+                       bool immutable, CodeRange* original = nullptr);
 
   V8_EXPORT_PRIVATE void Free();
 
@@ -179,6 +179,10 @@ class CodeRange final : public VirtualMemoryCage {
 
 #if !defined(V8_OS_WIN) && !defined(V8_OS_IOS) && defined(DEBUG)
   bool immutable_ = false;
+#endif
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  std::optional<SharedMemoryHandle> backing_store_;
 #endif
 };
 
