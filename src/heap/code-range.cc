@@ -149,7 +149,8 @@ size_t CodeRange::GetWritableReservedAreaSize() {
   if (v8_flags.trace_code_range_allocation) PrintF(__VA_ARGS__)
 
 bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
-                                size_t requested, bool immutable) {
+                                size_t requested, bool immutable,
+                                CodeRange* original) {
   DCHECK_NE(requested, 0);
   if (V8_EXTERNAL_CODE_SPACE_BOOL) {
     page_allocator = GetPlatformPageAllocator();
@@ -263,10 +264,29 @@ bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
 #endif
     // Last resort, use whatever region we could get with minimum constraints.
     params.requested_start_hint = the_hint;
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    if (original) {
+      CHECK(original->backing_store_.has_value());
+      // Allocate code cage CoW clone.
+      params.backing_store = original->backing_store_;
+    } else {
+      // Allocate shareable code cage.
+      backing_store_ = v8::base::OS::CreateSharedMemoryHandleForTesting(
+          params.reservation_size, "code cage");
+      CHECK(backing_store_.has_value());
+      params.backing_store = backing_store_;
+      params.mapping_type = MappingType::kShared;
+    }
+#endif
+
     if (!VirtualMemoryCage::InitReservation(params)) {
       params.requested_start_hint = kNullAddress;
-      if (!VirtualMemoryCage::InitReservation(params)) return false;
+      if (!VirtualMemoryCage::InitReservation(params)) {
+        return false;
+      }
     }
+
     TRACE("=== Fallback attempt, hint=%p: [%p, %p)\n",
           reinterpret_cast<void*>(params.requested_start_hint),
           reinterpret_cast<void*>(region().begin()),
