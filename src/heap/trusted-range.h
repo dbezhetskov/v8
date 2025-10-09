@@ -21,7 +21,11 @@ namespace internal {
 // reference objects. We have one trusted range per isolate group.
 class TrustedRange final : public VirtualMemoryCage {
  public:
-  bool InitReservation(size_t requested);
+  bool InitReservation(size_t requested, TrustedRange* original = nullptr);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  std::optional<SharedMemoryHandle> backing_store_;
+#endif
 };
 
 #endif  // V8_ENABLE_SANDBOX
