@@ -12,7 +12,7 @@ namespace internal {
 
 #ifdef V8_ENABLE_SANDBOX
 
-bool TrustedRange::InitReservation(size_t requested) {
+bool TrustedRange::InitReservation(size_t requested, TrustedRange* original) {
   DCHECK_LE(requested, kMaximalTrustedRangeSize);
   DCHECK_GE(requested, kMinimumTrustedRangeSize);
 
@@ -49,6 +49,22 @@ bool TrustedRange::InitReservation(size_t requested) {
   params.page_initialization_mode =
       base::PageInitializationMode::kAllocatedPagesCanBeUninitialized;
   params.page_freeing_mode = base::PageFreeingMode::kMakeInaccessible;
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  if (original) {
+    CHECK(original->backing_store_.has_value());
+    // Allocate code cage CoW clone.
+    params.backing_store = original->backing_store_;
+  } else {
+    // Allocate shareable code cage.
+    backing_store_ = v8::base::OS::CreateSharedMemoryHandleForTesting(
+        params.reservation_size, "trusted cage");
+    CHECK(backing_store_.has_value());
+    params.backing_store = backing_store_;
+    params.mapping_type = MappingType::kShared;
+  }
+#endif
+
   bool success = VirtualMemoryCage::InitReservation(params);
 
   if (success) {
