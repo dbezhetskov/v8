@@ -51,6 +51,14 @@ class V8_EXPORT_PRIVATE BaseSpace : public Malloced {
  protected:
   BaseSpace(Heap* heap, AllocationSpace id) : heap_(heap), id_(id) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  BaseSpace(Heap* heap, AllocationSpace id, BaseSpace* original)
+      : heap_(heap), id_(id) {
+    committed_.store(original->committed_.load());
+    max_committed_ = original->max_committed_;
+  }
+#endif
+
   virtual ~BaseSpace() = default;
 
   void AccountCommitted(size_t bytes) {

@@ -40,6 +40,14 @@ SpaceWithLinearArea::SpaceWithLinearArea(Heap* heap, AllocationSpace id,
                                          std::unique_ptr<FreeList> free_list)
     : Space(heap, id, std::move(free_list)) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+SpaceWithLinearArea::SpaceWithLinearArea(Heap* heap,
+                                         SpaceWithLinearArea* original,
+                                         AllocationSpace id,
+                                         std::unique_ptr<FreeList> free_list)
+    : Space(heap, original, id, std::move(free_list)) {}
+#endif
+
 SpaceIterator::SpaceIterator(Heap* heap)
     : heap_(heap), current_space_(FIRST_MUTABLE_SPACE) {}
 
