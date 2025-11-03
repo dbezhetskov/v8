@@ -12,7 +12,7 @@ namespace internal {
 
 #ifdef V8_ENABLE_SANDBOX
 
-bool TrustedRange::InitReservation(size_t requested) {
+bool TrustedRange::InitReservation(size_t requested, TrustedRange* original) {
   DCHECK_LE(requested, kMaximalTrustedRangeSize);
   DCHECK_GE(requested, kMinimumTrustedRangeSize);
 
@@ -49,7 +49,24 @@ bool TrustedRange::InitReservation(size_t requested) {
   params.page_initialization_mode =
       base::PageInitializationMode::kAllocatedPagesCanBeUninitialized;
   params.page_freeing_mode = base::PageFreeingMode::kMakeInaccessible;
-  bool success = VirtualMemoryCage::InitReservation(params);
+
+  PlatformSharedMemoryHandle underlying_file = kInvalidSharedMemoryHandle;
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  if (original) {
+    // Allocate trusted cage CoW clone.
+    underlying_file = original->underlying_memory_file_;
+  } else {
+    // Allocate shareable trusted cage.
+    underlying_memory_file_ = v8::base::OS::CreateSharedMemoryHandleForTesting(
+        params.reservation_size, "trusted cage");
+    underlying_file = underlying_memory_file_;
+  }
+#endif
+
+  const bool is_private =
+      COMPRESS_POINTERS_IN_SHARED_CAGE_BOOL || original != nullptr;
+  bool success =
+      VirtualMemoryCage::InitReservation(params, underlying_file, is_private);
 
   if (success) {
     // Reserve the null page to mitigate (compressed) nullptr dereference bugs.

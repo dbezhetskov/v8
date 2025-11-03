@@ -56,6 +56,17 @@ void* PageAllocator::AllocatePages(void* hint, size_t size, size_t alignment,
                             static_cast<base::OS::MemoryPermission>(access));
 }
 
+void* PageAllocator::AllocateFileBackedPages(void* hint, size_t size,
+                                             size_t alignment,
+                                             Permission access,
+                                             PlatformSharedMemoryHandle handle,
+                                             bool is_private) {
+  return base::OS::Allocate(hint, size, alignment,
+                            static_cast<base::OS::MemoryPermission>(access),
+                            handle,
+                            /* shareable */ !is_private);
+}
+
 class SharedMemoryMapping : public ::v8::PageAllocator::SharedMemoryMapping {
  public:
   explicit SharedMemoryMapping(PageAllocator* page_allocator, void* ptr,

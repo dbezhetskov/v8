@@ -149,7 +149,8 @@ size_t CodeRange::GetWritableReservedAreaSize() {
   if (v8_flags.trace_code_range_allocation) PrintF(__VA_ARGS__)
 
 bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
-                                size_t requested, bool immutable) {
+                                size_t requested, bool immutable,
+                                CodeRange* original) {
   DCHECK_NE(requested, 0);
   if (V8_EXTERNAL_CODE_SPACE_BOOL) {
     page_allocator = GetPlatformPageAllocator();
@@ -169,8 +170,15 @@ bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
   VirtualMemoryCage::ReservationParams params;
   params.page_allocator = page_allocator;
   params.reservation_size = requested;
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // To share code cage between two isolate groups
+  // we have to use 4GB alignment to make addresses
+  // to code cage base independent.
+  params.base_alignment = size_t{4} * GB;
+#else
   params.base_alignment =
       VirtualMemoryCage::ReservationParams::kAnyBaseAlignment;
+#endif
   params.page_size = kPageSize;
   if (v8_flags.jitless) {
     params.permissions = PageAllocator::Permission::kNoAccess;
@@ -251,12 +259,41 @@ bool CodeRange::InitReservation(v8::PageAllocator* page_allocator,
   if (!IsReserved()) {
     Address the_hint = GetCodeRangeAddressHint()->GetAddressHint(
         requested, allocate_page_size);
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    the_hint = RoundUp(the_hint, params.base_alignment);
+#endif
     // Last resort, use whatever region we could get with minimum constraints.
     params.requested_start_hint = the_hint;
-    if (!VirtualMemoryCage::InitReservation(params)) {
-      params.requested_start_hint = kNullAddress;
-      if (!VirtualMemoryCage::InitReservation(params)) return false;
+    auto init_reservation_helper =
+        [&params, this](PlatformSharedMemoryHandle file, bool is_private) {
+          if (VirtualMemoryCage::InitReservation(params, file, is_private))
+            return true;
+          params.requested_start_hint = kNullAddress;
+          return VirtualMemoryCage::InitReservation(params, file, is_private);
+        };
+
+    PlatformSharedMemoryHandle file = kInvalidSharedMemoryHandle;
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    if (original) {
+      // Allocate code cage CoW clone.
+      file = original->underlying_memory_file_;
+    } else {
+      // Allocate shareable code cage.
+      underlying_memory_file_ =
+          v8::base::OS::CreateSharedMemoryHandleForTesting(
+              params.reservation_size, "code cage");
+      file = underlying_memory_file_;
     }
+#endif
+
+    const bool is_private =
+        COMPRESS_POINTERS_IN_SHARED_CAGE_BOOL || original != nullptr;
+    DCHECK_IMPLIES(COMPRESS_POINTERS_IN_SHARED_CAGE_BOOL,
+                   file == kInvalidSharedMemoryHandle);
+    if (!init_reservation_helper(file, is_private)) {
+      return false;
+    }
+
     TRACE("=== Fallback attempt, hint=%p: [%p, %p)\n",
           reinterpret_cast<void*>(params.requested_start_hint),
           reinterpret_cast<void*>(region().begin()),

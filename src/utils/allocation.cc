@@ -183,6 +183,27 @@ void* AllocatePages(v8::PageAllocator* page_allocator, size_t size,
   return result;
 }
 
+void* AllocatePages(v8::PageAllocator* page_allocator, size_t size,
+                    size_t alignment, PageAllocator::Permission access,
+                    PageAllocator::AllocationHint hint,
+                    PlatformSharedMemoryHandle handle, bool is_private) {
+  DCHECK_NOT_NULL(page_allocator);
+  DCHECK(IsAligned(reinterpret_cast<Address>(hint.Address()), alignment));
+  DCHECK(IsAligned(size, page_allocator->AllocatePageSize()));
+  if (!hint.Address() && v8_flags.randomize_all_allocations) {
+    hint = hint.WithAddress(
+        AlignedAddress(page_allocator->GetRandomMmapAddr(), alignment));
+  }
+  void* result = nullptr;
+  for (int i = 0; i < kAllocationTries; ++i) {
+    result = page_allocator->AllocateFileBackedPages(
+        hint.Address(), size, alignment, access, handle, is_private);
+    if (V8_LIKELY(result != nullptr)) break;
+    OnCriticalMemoryPressure();
+  }
+  return result;
+}
+
 void FreePages(v8::PageAllocator* page_allocator, void* address,
                const size_t size) {
   DCHECK_NOT_NULL(page_allocator);
@@ -226,6 +247,25 @@ VirtualMemory::VirtualMemory(v8::PageAllocator* page_allocator, size_t size,
   alignment = RoundUp(alignment, page_size);
   Address address = reinterpret_cast<Address>(AllocatePages(
       page_allocator_, RoundUp(size, page_size), alignment, permissions, hint));
+  if (address != kNullAddress) {
+    DCHECK(IsAligned(address, alignment));
+    region_ = base::AddressRegion(address, size);
+  }
+}
+
+VirtualMemory::VirtualMemory(PlatformSharedMemoryHandle handle, bool is_private,
+                             v8::PageAllocator* page_allocator, size_t size,
+                             PageAllocator::AllocationHint hint,
+                             size_t alignment,
+                             PageAllocator::Permission permissions)
+    : page_allocator_(page_allocator) {
+  DCHECK_NOT_NULL(page_allocator);
+  DCHECK(IsAligned(size, page_allocator_->CommitPageSize()));
+  const size_t page_size = page_allocator_->AllocatePageSize();
+  alignment = RoundUp(alignment, page_size);
+  Address address = reinterpret_cast<Address>(
+      AllocatePages(page_allocator_, RoundUp(size, page_size), alignment,
+                    permissions, hint, handle, is_private));
   if (address != kNullAddress) {
     DCHECK(IsAligned(address, alignment));
     region_ = base::AddressRegion(address, size);
@@ -359,6 +399,46 @@ bool VirtualMemoryCage::InitReservation(
     base_ = reservation_.address();
     CHECK_EQ(reservation_.size(), params.reservation_size);
   }
+  CHECK_NE(base_, kNullAddress);
+  CHECK(IsAligned(base_, params.base_alignment));
+
+  const Address allocatable_base = RoundUp(base_, params.page_size);
+  const size_t allocatable_size = RoundDown(
+      params.reservation_size - (allocatable_base - base_), params.page_size);
+  size_ = allocatable_base + allocatable_size - base_;
+
+  page_allocator_ = std::make_unique<base::BoundedPageAllocator>(
+      params.page_allocator, allocatable_base, allocatable_size,
+      params.page_size, params.page_initialization_mode,
+      params.page_freeing_mode);
+  return true;
+}
+
+bool VirtualMemoryCage::InitReservation(
+    const ReservationParams& params,
+    PlatformSharedMemoryHandle underlying_memory_file, bool is_private) {
+  DCHECK(!reservation_.IsReserved());
+
+  const size_t allocate_page_size = params.page_allocator->AllocatePageSize();
+  CHECK(IsAligned(params.reservation_size, allocate_page_size));
+  CHECK(params.base_alignment == ReservationParams::kAnyBaseAlignment ||
+        IsAligned(params.base_alignment, allocate_page_size));
+
+  Address hint = params.requested_start_hint;
+  // Require the hint to be properly aligned because here it's not clear
+  // anymore whether it should be rounded up or down.
+  CHECK(IsAligned(hint, params.base_alignment));
+  VirtualMemory reservation(underlying_memory_file, is_private,
+                            params.page_allocator, params.reservation_size,
+                            v8::PageAllocator::AllocationHint().WithAddress(
+                                reinterpret_cast<void*>(hint)),
+                            params.base_alignment, params.permissions);
+  // The virtual memory reservation fails only due to OOM.
+  if (!reservation.IsReserved()) return false;
+
+  reservation_ = std::move(reservation);
+  base_ = reservation_.address();
+  CHECK_EQ(reservation_.size(), params.reservation_size);
   CHECK_NE(base_, kNullAddress);
   CHECK(IsAligned(base_, params.base_alignment));
 
