@@ -7,6 +7,11 @@
 
 #include <cstdint>
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include <algorithm>
+#include <iterator>
+#endif
+
 #include "src/base/atomic-utils.h"
 #include "src/common/globals.h"
 #include "src/heap/marking-worklist.h"
@@ -159,7 +164,14 @@ class V8_EXPORT_PRIVATE MarkingBitmap final {
 
   MarkingBitmap() = default;
   MarkingBitmap(const MarkingBitmap&) = delete;
-  MarkingBitmap& operator=(const MarkingBitmap&) = delete;
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  MarkingBitmap& operator=(const MarkingBitmap& other) {
+    std::copy(std::begin(other.cells_), std::end(other.cells_),
+              std::begin(cells_));
+    return *this;
+  }
+#endif
 
   V8_INLINE CellType* cells() { return cells_; }
   V8_INLINE const CellType* cells() const { return cells_; }

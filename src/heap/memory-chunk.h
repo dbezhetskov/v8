@@ -160,6 +160,11 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
   V8_INLINE const MemoryChunkMetadata* Metadata(const Isolate* isolate) const;
 
   V8_INLINE MemoryChunkMetadata* Metadata();
+
+#if V8_ENABLE_SANDBOX && V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_INLINE uint32_t MetadataIndex() const { return metadata_index_; }
+#endif
+
   V8_INLINE const MemoryChunkMetadata* Metadata() const;
 
   V8_INLINE MemoryChunkMetadata* MetadataNoIsolateCheck();
@@ -200,6 +205,12 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
   V8_INLINE MainThreadFlags GetFlags() const {
     return untrusted_main_thread_flags_;
   }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_INLINE void SetFlags(MainThreadFlags flags) {
+    untrusted_main_thread_flags_ = flags;
+  }
+#endif
 
   // Emits a memory barrier. For TSAN builds the other thread needs to perform
   // MemoryChunk::SynchronizedLoad() to simulate the barrier.

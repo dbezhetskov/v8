@@ -54,6 +54,13 @@ class MarkingProgressTracker final {
     }
   }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CloneFrom(const MarkingProgressTracker& other) {
+    overall_chunks_ = other.overall_chunks_;
+    current_chunk_.store(other.current_chunk_.load());
+  }
+#endif
+
   size_t GetCurrentChunkForTesting() const {
     return current_chunk_.load(std::memory_order_relaxed);
   }
