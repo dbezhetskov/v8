@@ -100,6 +100,16 @@ class MemoryAllocator final {
       LargeObjectSpace* space, size_t object_size, Executability executable,
       AllocationHint hint);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_EXPORT_PRIVATE PageMetadata* AllocatePageAt(Space* space,
+                                                 Executability executable,
+                                                 Address start);
+
+  V8_EXPORT_PRIVATE LargePageMetadata* AllocateLargePageAt(
+      LargeObjectSpace* space, Address address, size_t page_size,
+      Executability executable);
+#endif
+
   bool ResizeLargePage(LargePageMetadata* page, size_t old_object_size,
                        size_t new_object_size);
 

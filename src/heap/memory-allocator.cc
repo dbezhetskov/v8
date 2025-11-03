@@ -506,6 +506,89 @@ bool IsPagePoolSupportedForLargeSpace(LargeObjectSpace* space) {
 }
 }  // namespace
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+PageMetadata* MemoryAllocator::AllocatePageAt(Space* space,
+                                              Executability executable,
+                                              Address start) {
+  const size_t size =
+      MemoryChunkLayout::AllocatableMemoryInMemoryChunk(space->identity());
+  std::optional<MemoryChunkAllocationResult> chunk_info;
+
+  if (!chunk_info) {
+    chunk_info = AllocateUninitializedChunkAt(
+        space, size, executable, start, PageSize::kRegular, AllocationHint());
+  }
+  if (!chunk_info) return nullptr;
+
+  PageMetadata* metadata;
+  MemoryChunk::MainThreadFlags trusted_flags;
+  if (!chunk_info->optional_metadata) {
+    chunk_info->optional_metadata = malloc(sizeof(PageMetadata));
+  }
+  metadata = new (chunk_info->optional_metadata) PageMetadata(
+      isolate_->heap(), space, chunk_info->size, chunk_info->area_start,
+      chunk_info->area_end, std::move(chunk_info->reservation), executable,
+      &trusted_flags);
+  if (executable) {
+    RwxMemoryWriteScope scope("Initialize a new MemoryChunk.");
+    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+#ifdef DEBUG
+    RegisterExecutableMemoryChunk(metadata);
+#endif  // DEBUG
+  } else {
+    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+  }
+
+  DCHECK(metadata->IsLivenessClear());
+  space->InitializePage(metadata);
+  RecordMemoryChunkCreated(metadata);
+  return metadata;
+}
+
+LargePageMetadata* MemoryAllocator::AllocateLargePageAt(
+    LargeObjectSpace* space, Address address, size_t page_size,
+    Executability executable) {
+  std::optional<MemoryChunkAllocationResult> chunk_info;
+
+  if (IsPagePoolSupportedForLargeSpace(space)) {
+    chunk_info = TryAllocateUninitializedLargePageFromPool(space, page_size);
+  }
+
+  if (!chunk_info) {
+    chunk_info =
+        AllocateUninitializedChunkAt(space, page_size, executable, address,
+                                     PageSize::kLarge, AllocationHint());
+  }
+
+  if (!chunk_info) {
+    return nullptr;
+  }
+
+  LargePageMetadata* metadata;
+  MemoryChunk::MainThreadFlags trusted_flags;
+  if (!chunk_info->optional_metadata) {
+    chunk_info->optional_metadata = malloc(sizeof(LargePageMetadata));
+  }
+
+  metadata = new (chunk_info->optional_metadata) LargePageMetadata(
+      isolate_->heap(), space, chunk_info->size, chunk_info->area_start,
+      chunk_info->area_end, std::move(chunk_info->reservation), executable,
+      &trusted_flags);
+  if (executable) {
+    RwxMemoryWriteScope scope("Initialize a new MemoryChunk.");
+    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+#ifdef DEBUG
+    RegisterExecutableMemoryChunk(metadata);
+#endif  // DEBUG
+  } else {
+    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+  }
+
+  RecordMemoryChunkCreated(metadata);
+  return metadata;
+}
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+
 LargePageMetadata* MemoryAllocator::AllocateLargePage(LargeObjectSpace* space,
                                                       size_t object_size,
                                                       Executability executable,
