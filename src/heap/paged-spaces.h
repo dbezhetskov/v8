@@ -120,6 +120,12 @@ class V8_EXPORT_PRIVATE PagedSpaceBase
                  std::unique_ptr<FreeList> free_list,
                  CompactionSpaceKind compaction_space_kind);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  PagedSpaceBase(Heap* heap, PagedSpaceBase* original_space, AllocationSpace id,
+                 Executability executable, std::unique_ptr<FreeList> free_list,
+                 CompactionSpaceKind compaction_space_kind);
+#endif
+
   ~PagedSpaceBase() override { TearDown(); }
 
   // Checks whether an object/address is in this space.
@@ -366,6 +372,14 @@ class V8_EXPORT_PRIVATE PagedSpace : public PagedSpaceBase {
       : PagedSpaceBase(heap, id, executable, std::move(free_list),
                        compaction_space_kind) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  PagedSpace(Heap* heap, PagedSpace* original, AllocationSpace id,
+             Executability executable, std::unique_ptr<FreeList> free_list,
+             CompactionSpaceKind compaction_space_kind)
+      : PagedSpaceBase(heap, original, id, executable, std::move(free_list),
+                       compaction_space_kind) {}
+#endif
+
   AllocatorPolicy* CreateAllocatorPolicy(MainAllocator* allocator) final;
 };
 
@@ -449,6 +463,12 @@ class V8_EXPORT_PRIVATE OldSpace : public PagedSpace {
       : PagedSpace(heap, OLD_SPACE, NOT_EXECUTABLE, FreeList::CreateFreeList(),
                    CompactionSpaceKind::kNone) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  OldSpace(Heap* heap, OldSpace* original)
+      : PagedSpace(heap, original, OLD_SPACE, NOT_EXECUTABLE,
+                   FreeList::CreateFreeList(), CompactionSpaceKind::kNone) {}
+#endif
+
   void AddPromotedPage(PageMetadata* page, FreeMode free_mode);
 
   void RelinkQuarantinedPageFreeList(PageMetadata* page,
@@ -509,6 +529,11 @@ class CodeSpace final : public PagedSpace {
   explicit CodeSpace(Heap* heap)
       : PagedSpace(heap, CODE_SPACE, EXECUTABLE, FreeList::CreateFreeList(),
                    CompactionSpaceKind::kNone) {}
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  CodeSpace(Heap* heap, CodeSpace* original)
+      : PagedSpace(heap, original, CODE_SPACE, EXECUTABLE,
+                   FreeList::CreateFreeList(), CompactionSpaceKind::kNone) {}
+#endif
 };
 
 // -----------------------------------------------------------------------------
@@ -536,6 +561,12 @@ class TrustedSpace final : public PagedSpace {
   explicit TrustedSpace(Heap* heap)
       : PagedSpace(heap, TRUSTED_SPACE, NOT_EXECUTABLE,
                    FreeList::CreateFreeList(), CompactionSpaceKind::kNone) {}
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  TrustedSpace(Heap* heap, TrustedSpace* original)
+      : PagedSpace(heap, original, TRUSTED_SPACE, NOT_EXECUTABLE,
+                   FreeList::CreateFreeList(), CompactionSpaceKind::kNone) {}
+#endif
 };
 
 class SharedTrustedSpace final : public PagedSpace {

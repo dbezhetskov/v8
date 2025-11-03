@@ -33,6 +33,17 @@ PageIteratorImpl<PageType> PageIteratorImpl<PageType>::operator++(int) {
   return tmp;
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+const VirtualMemoryCage* Space::GetCage() const {
+  if (IsAnyTrustedSpace(identity())) {
+    return heap()->isolate()->isolate_group()->GetTrustedPtrComprCage();
+  } else if (IsAnyCodeSpace(identity())) {
+    return heap()->isolate()->isolate_group()->GetCodeRange();
+  }
+  return heap()->isolate()->isolate_group()->GetPtrComprCage();
+}
+#endif
+
 PageRange::PageRange(PageMetadata* page) : PageRange(page, page->next_page()) {}
 ConstPageRange::ConstPageRange(const PageMetadata* page)
     : ConstPageRange(page, page->next_page()) {}

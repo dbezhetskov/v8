@@ -19,6 +19,10 @@
 #include "src/heap/spaces.h"
 #include "src/objects/heap-object.h"
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include "src/heap/remembered-set.h"
+#endif
+
 namespace v8::internal {
 
 MutablePageMetadata::MutablePageMetadata(Heap* heap, BaseSpace* space,
@@ -210,6 +214,87 @@ void MutablePageMetadata::ReleaseAllocatedMemoryNeededForWritableChunk() {
 void MutablePageMetadata::ReleaseAllAllocatedMemory() {
   ReleaseAllocatedMemoryNeededForWritableChunk();
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void MutablePageMetadata::CopyStateFrom(MutablePageMetadata* original_page,
+                                        const VirtualMemoryCage* original_cage,
+                                        const VirtualMemoryCage* cloned_cage) {
+  // Copy slot_set_.
+  for (int i = 0; i < NUMBER_OF_REMEMBERED_SET_TYPES; ++i) {
+    if (!original_page->slot_set_[i]) {
+      continue;
+    }
+
+    SlotSet* original_slot_set = original_page->slot_set_[i];
+    SlotSet* new_slot_set = AllocateSlotSet(static_cast<RememberedSetType>(i));
+    const auto callback = [this, new_slot_set, original_cage,
+                           cloned_cage](MaybeObjectSlot slot) {
+      // TODO(dbezhetskov): since internal representation is based on
+      // offset, cloning could be done without remapping.
+      Address cloned_slot_address =
+          original_cage->Rebase(slot.address(), cloned_cage);
+      new_slot_set
+          ->Insert<SlotSet::ConvertAccessMode<AccessMode::NON_ATOMIC>()>(
+              Offset(cloned_slot_address));
+      return KEEP_SLOT;
+    };
+
+    RememberedSetOperations::template Iterate<AccessMode::NON_ATOMIC,
+                                              decltype(callback)>(
+        original_slot_set, original_page, callback,
+        SlotSet::KEEP_EMPTY_BUCKETS);
+    slot_set_[i] = new_slot_set;
+  }
+
+  // Copy typed_slot_set_.
+  for (int i = 0; i < NUMBER_OF_REMEMBERED_SET_TYPES; ++i) {
+    if (!original_page->typed_slot_set_[i]) {
+      continue;
+    }
+    TypedSlotSet* original_typed_slot_set = original_page->typed_slot_set_[i];
+    TypedSlotSet* new_typed_slot_set =
+        AllocateTypedSlotSet(static_cast<RememberedSetType>(i));
+    original_typed_slot_set->Iterate(
+        [this, new_typed_slot_set, original_cage, cloned_cage](
+            SlotType slot_type, Address slot) {
+          Address cloned_slot_address =
+              original_cage->Rebase(slot, cloned_cage);
+          new_typed_slot_set->Insert(
+              slot_type, static_cast<uint32_t>(Offset(cloned_slot_address)));
+          return KEEP_SLOT;
+        },
+        TypedSlotSet::KEEP_EMPTY_CHUNKS);
+    typed_slot_set_[i] = new_typed_slot_set;
+  }
+
+  // Copy main thread flags.
+  trusted_main_thread_flags_ = original_page->trusted_main_thread_flags_;
+  Chunk()->SetFlags(original_page->Chunk()->GetFlags());
+
+  // Copy active_system_pages_.
+  if (active_system_pages_) {
+    *active_system_pages_ = *original_page->active_system_pages_;
+  }
+
+  // Copy marking_bitmap_.
+  marking_bitmap_ = original_page->marking_bitmap_;
+
+  // Copy live_byte_count_.
+  live_byte_count_.store(original_page->live_byte_count_.load());
+
+  // Copy concurrent_sweeping_.
+  concurrent_sweeping_.store(original_page->concurrent_sweeping_.load());
+
+  // Copy marking_progress_tracker_.
+  marking_progress_tracker_.CloneFrom(original_page->marking_progress_tracker_);
+}
+
+void MutablePageMetadata::CopyBytesStatsFrom(
+    MutablePageMetadata* original_page) {
+  allocated_bytes_ = original_page->allocated_bytes_;
+  wasted_memory_ = original_page->wasted_memory_;
+}
+#endif
 
 SlotSet* MutablePageMetadata::AllocateSlotSet(RememberedSetType type) {
   SlotSet* new_slot_set = SlotSet::Allocate(BucketsInSlotSet());
