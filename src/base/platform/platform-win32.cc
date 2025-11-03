@@ -995,7 +995,8 @@ void CheckIsOOMError(int error) {
 
 // static
 void* OS::Allocate(void* hint, size_t size, size_t alignment,
-                   MemoryPermission access, PlatformSharedMemoryHandle handle) {
+                   MemoryPermission access, PlatformSharedMemoryHandle handle,
+                   bool is_shared) {
   // File handles aren't supported.
   DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
 
@@ -1142,7 +1143,7 @@ bool OS::CanReserveAddressSpace() {
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    PlatformSharedMemoryHandle handle) {
+    PlatformSharedMemoryHandle handle, bool is_shared) {
   // File handles aren't supported.
   DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
   CHECK(CanReserveAddressSpace());

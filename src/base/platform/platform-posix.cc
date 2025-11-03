@@ -463,7 +463,8 @@ void* OS::GetRandomMmapAddr() {
 #if !V8_OS_ZOS
 // static
 void* OS::Allocate(void* hint, size_t size, size_t alignment,
-                   MemoryPermission access, PlatformSharedMemoryHandle handle) {
+                   MemoryPermission access, PlatformSharedMemoryHandle handle,
+                   bool is_shared) {
   size_t page_size = AllocatePageSize();
   DCHECK_EQ(0, size % page_size);
   DCHECK_EQ(0, alignment % page_size);
@@ -471,7 +472,7 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
   // Add the maximum misalignment so we are guaranteed an aligned base address.
   size_t request_size = size + (alignment - page_size);
   request_size = RoundUp(request_size, OS::AllocatePageSize());
-  PageType page_type = PageType::kPrivate;
+  PageType page_type = is_shared ? PageType::kShared : PageType::kPrivate;
   void* result = base::Allocate(hint, request_size, access, page_type, handle);
   if (result == nullptr) return nullptr;
 
@@ -694,18 +695,20 @@ bool OS::CanReserveAddressSpace() { return true; }
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    PlatformSharedMemoryHandle handle) {
+    PlatformSharedMemoryHandle handle, bool is_shared) {
   // On POSIX, address space reservations are backed by private memory mappings.
   MemoryPermission permission = MemoryPermission::kNoAccess;
   if (max_permission == MemoryPermission::kReadWriteExecute) {
     permission = MemoryPermission::kNoAccessWillJitLater;
   }
 
-  void* reservation = Allocate(hint, size, alignment, permission, handle);
+  void* reservation =
+      Allocate(hint, size, alignment, permission, handle, is_shared);
   if (!reservation && permission == MemoryPermission::kNoAccessWillJitLater) {
     // Retry without MAP_JIT, for example in case we are running on an old OS X.
     permission = MemoryPermission::kNoAccess;
-    reservation = Allocate(hint, size, alignment, permission, handle);
+    reservation =
+        Allocate(hint, size, alignment, permission, handle, is_shared);
   }
 
   if (!reservation) return {};
