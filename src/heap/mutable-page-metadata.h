@@ -272,6 +272,14 @@ class MutablePageMetadata : public MemoryChunkMetadata {
 
   bool IsLivenessClear() const;
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CopyStateFrom(MutablePageMetadata* original_page,
+                     const VirtualMemoryCage* original_cage,
+                     const VirtualMemoryCage* cloned_cage);
+
+  void CopyBytesStatsFrom(MutablePageMetadata* original_page);
+#endif
+
  protected:
   MutablePageMetadata(Heap* heap, BaseSpace* space, size_t size,
                       Address area_start, Address area_end,

@@ -76,6 +76,83 @@ PagedSpaceBase::PagedSpaceBase(Heap* heap, AllocationSpace space,
   accounting_stats_.Clear();
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+PagedSpaceBase::PagedSpaceBase(Heap* heap, PagedSpaceBase* original_space,
+                               AllocationSpace space, Executability executable,
+                               std::unique_ptr<FreeList> free_list,
+                               CompactionSpaceKind compaction_space_kind)
+    : SpaceWithLinearArea(heap, space, std::move(free_list)),
+      executable_(executable),
+      compaction_space_kind_(compaction_space_kind) {
+  // Allocate each page at the same offset from its cage base as the
+  // corresponding original page. Invariant:
+  //   original_page_start - original_cage_base == new_page_start -
+  //   new_cage_base.
+  const VirtualMemoryCage* original_cage = original_space->GetCage();
+  const VirtualMemoryCage* cloned_cage = GetCage();
+  for (PageMetadata* original_page : *original_space) {
+#ifdef DEBUG
+    Address new_area_start =
+        original_cage->Rebase(original_page->area_start(), cloned_cage);
+    Address new_area_end =
+        original_cage->Rebase(original_page->area_end(), cloned_cage);
+#endif
+    Address original_page_base = original_page->Chunk()->address();
+    Address cloned_page_base =
+        original_cage->Rebase(original_page_base, cloned_cage);
+
+    DCHECK(!original_page->Chunk()->IsLargePage());
+    PageMetadata* cloned_page = heap->memory_allocator()->AllocatePageAt(
+        this, executable, cloned_page_base);
+    cloned_page->CopyStateFrom(original_page, original_cage, cloned_cage);
+    DCHECK(cloned_page);
+
+    if (IsAnyCodeSpace(space)) {
+      ThreadIsolation::CloneJitAllocationsForPage(
+          original_page_base, original_cage, cloned_page_base, cloned_cage,
+          original_page->size());
+    }
+
+    // Check that a newly allocated page corresponds to
+    // the same offsets.
+    DCHECK_EQ(cloned_page->area_start(), new_area_start);
+    DCHECK_EQ(cloned_page->area_end(), new_area_end);
+    DCHECK_EQ(cloned_page->size(), original_page->size());
+
+    ConcurrentAllocationMutex guard(this);
+    AddPage(cloned_page);
+    NotifyNewPage(cloned_page);
+
+    cloned_page->CopyBytesStatsFrom(original_page);
+    accounting_stats_.CloneAndRebindFrom(
+        original_space->accounting_stats_,
+        heap->isolate()->isolate_group()->metadata_pointer_table());
+    DCHECK_EQ(accounting_stats_.AllocatedOnPage(cloned_page),
+              original_space->accounting_stats_.AllocatedOnPage(original_page));
+    DCHECK_EQ(cloned_page->allocated_bytes(), original_page->allocated_bytes());
+    DCHECK_EQ(cloned_page->wasted_memory(), original_page->wasted_memory());
+  }
+
+  area_size_ = MemoryChunkLayout::AllocatableMemoryInMemoryChunk(space);
+  DCHECK_EQ(area_size_, original_space->area_size_);
+  DCHECK_EQ(accounting_stats_.Size(), original_space->accounting_stats_.Size());
+  DCHECK_EQ(accounting_stats_.Capacity(),
+            original_space->accounting_stats_.Capacity());
+  committed_physical_memory_.store(
+      original_space->committed_physical_memory_.load());
+  size_at_last_gc_ = original_space->size_at_last_gc_;
+
+  if (first_page() && last_page()) {
+    DCHECK_EQ(first_page()->ChunkAddress(),
+              original_cage->Rebase(
+                  original_space->first_page()->ChunkAddress(), cloned_cage));
+    DCHECK_EQ(last_page()->ChunkAddress(),
+              original_cage->Rebase(original_space->last_page()->ChunkAddress(),
+                                    cloned_cage));
+  }
+}
+#endif
+
 PageMetadata* PagedSpaceBase::InitializePage(
     MutablePageMetadata* mutable_page_metadata) {
   MemoryChunk* chunk = mutable_page_metadata->Chunk();

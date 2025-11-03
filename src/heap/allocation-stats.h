@@ -35,6 +35,26 @@ class AllocationStats {
     return *this;
   }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CloneAndRebindFrom(const AllocationStats& other,
+                          IsolateGroup::MemoryChunkMetadataTableEntry* mpt) {
+    *this = other;
+#ifdef DEBUG
+    std::unordered_map<const MemoryChunkMetadata*, size_t,
+                       base::hash<const MemoryChunkMetadata*>>
+        allocated_on_page_new;
+    for (auto [memory_chunk_metadata, count] : allocated_on_page_) {
+      auto idx = memory_chunk_metadata->Chunk()->MetadataIndex();
+      if (mpt[idx].metadata()) {
+        DCHECK(mpt[idx].metadata());
+        allocated_on_page_new[mpt[idx].metadata()] = count;
+      }
+    }
+    allocated_on_page_ = std::move(allocated_on_page_new);
+#endif
+  }
+#endif
+
   // Zero out all the allocation statistics (i.e., no capacity).
   void Clear() {
     capacity_ = 0;

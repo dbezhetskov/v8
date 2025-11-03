@@ -69,6 +69,15 @@ class V8_EXPORT_PRIVATE Space : public BaseSpace {
   Space(Heap* heap, AllocationSpace id, std::unique_ptr<FreeList> free_list)
       : BaseSpace(heap, id), free_list_(std::move(free_list)) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  Space(Heap* heap, Space* original, AllocationSpace id,
+        std::unique_ptr<FreeList> free_list)
+      : BaseSpace(heap, id, original), free_list_(std::move(free_list)) {
+  }
+
+  inline const VirtualMemoryCage* GetCage() const;
+#endif
+
   ~Space() override = default;
 
   Space(const Space&) = delete;
@@ -202,6 +211,11 @@ class V8_EXPORT_PRIVATE SpaceWithLinearArea : public Space {
   // new MainAllocator instance.
   SpaceWithLinearArea(Heap* heap, AllocationSpace id,
                       std::unique_ptr<FreeList> free_list);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  SpaceWithLinearArea(Heap* heap, SpaceWithLinearArea* original,
+                      AllocationSpace id, std::unique_ptr<FreeList> free_list);
+#endif
 
   virtual AllocatorPolicy* CreateAllocatorPolicy(MainAllocator* allocator) = 0;
 
