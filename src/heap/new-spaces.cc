@@ -7,6 +7,10 @@
 #include <atomic>
 #include <optional>
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include <vector>
+#endif
+
 #include "src/base/logging.h"
 #include "src/base/macros.h"
 #include "src/common/globals.h"
@@ -136,6 +140,24 @@ bool SemiSpace::AllocateFreshPage() {
                                static_cast<int>(new_page->area_size()));
   return true;
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+bool SemiSpace::AllocateFreshPageAt(Address address) {
+  PageMetadata* new_page =
+      heap()->memory_allocator()->AllocatePageAt(this, NOT_EXECUTABLE, address);
+  if (new_page == nullptr) {
+    return false;
+  }
+  memory_chunk_list_.PushBack(new_page);
+  IncrementCommittedPhysicalMemory(new_page->CommittedPhysicalMemory());
+  AccountCommitted(PageMetadata::kPageSize);
+
+  current_page_ = new_page;
+  base::AsAtomicWord::Relaxed_Store(
+      &current_capacity_, current_capacity_ + PageMetadata::kPageSize);
+  return true;
+}
+#endif
 
 void SemiSpace::RewindPages(int num_pages) {
   DCHECK_GT(num_pages, 0);
@@ -377,6 +399,11 @@ void SemiSpace::MoveQuarantinedPage(PageMetadata* metadata) {
 NewSpace::NewSpace(Heap* heap)
     : SpaceWithLinearArea(heap, NEW_SPACE, nullptr) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+NewSpace::NewSpace(Heap* heap, NewSpace* original)
+    : SpaceWithLinearArea(heap, original, NEW_SPACE, nullptr) {}
+#endif
+
 void NewSpace::PromotePageToOldSpace(PageMetadata* page, FreeMode free_mode) {
   DCHECK(page->will_be_promoted());
   DCHECK(page->Chunk()->InYoungGeneration());
@@ -412,6 +439,134 @@ SemiSpaceNewSpace::SemiSpaceNewSpace(Heap* heap,
   DCHECK_LE(minimum_capacity_, target_capacity_);
   DCHECK_LE(target_capacity_, maximum_capacity_);
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+SemiSpaceNewSpace::SemiSpaceNewSpace(Heap* heap,
+                                     SemiSpaceNewSpace* original_space)
+    : NewSpace(heap, original_space),
+      to_space_(heap, kToSpace),
+      from_space_(heap, kFromSpace),
+      minimum_capacity_(original_space->minimum_capacity_),
+      maximum_capacity_(original_space->maximum_capacity_),
+      target_capacity_(original_space->target_capacity_) {
+  // Recreate remapped clones of the original pages.
+  const auto* original_cage =
+      original_space->heap()->isolate()->isolate_group()->GetPtrComprCage();
+  const auto* cloned_cage = heap->isolate()->isolate_group()->GetPtrComprCage();
+  const auto rebase = [original_cage, cloned_cage](Address address) {
+    if (address == kNullAddress) {
+      return address;
+    }
+    return original_cage->Rebase(address, cloned_cage);
+  };
+
+  std::vector<PageMetadata*> original_to_space_pages;
+  PageMetadata* cloned_to_space_current_page = nullptr;
+  for (PageMetadata* original_page : original_space->to_space()) {
+    DCHECK(!original_page->Chunk()->IsLargePage());
+    Address page_base = rebase(original_page->ChunkAddress());
+    CHECK(AddToSpacePageAt(page_base));
+    PageMetadata* cloned_page = to_space_.current_page();
+    cloned_page->CopyStateFrom(original_page, original_cage, cloned_cage);
+    DCHECK_EQ(cloned_page->allocated_bytes(), original_page->allocated_bytes());
+    DCHECK_EQ(cloned_page->wasted_memory(), original_page->wasted_memory());
+
+    if (original_page == original_space->to_space_.current_page()) {
+      cloned_to_space_current_page = cloned_page;
+    }
+    original_to_space_pages.push_back(original_page);
+  }
+  DCHECK_IMPLIES(original_space->to_space_.current_page(),
+                 cloned_to_space_current_page);
+  to_space_.current_page_ = cloned_to_space_current_page;
+
+  std::vector<PageMetadata*> original_from_space_pages;
+  PageMetadata* cloned_from_space_current_page = nullptr;
+  for (PageMetadata* original_page : original_space->from_space()) {
+    DCHECK(!original_page->Chunk()->IsLargePage());
+    Address page_base = rebase(original_page->ChunkAddress());
+    CHECK(AddFromSpacePageAt(page_base));
+    PageMetadata* cloned_page = from_space_.current_page();
+    cloned_page->CopyStateFrom(original_page, original_cage, cloned_cage);
+    DCHECK_EQ(cloned_page->allocated_bytes(), original_page->allocated_bytes());
+    DCHECK_EQ(cloned_page->wasted_memory(), original_page->wasted_memory());
+
+    if (original_page == original_space->from_space_.current_page()) {
+      cloned_from_space_current_page = cloned_page;
+    }
+    original_from_space_pages.push_back(original_page);
+  }
+  DCHECK_IMPLIES(original_space->from_space_.current_page(),
+                 cloned_from_space_current_page);
+  from_space_.current_page_ = cloned_from_space_current_page;
+
+  DCHECK(!original_space->free_list());
+  DCHECK(!original_space->to_space_.free_list());
+  DCHECK(!original_space->from_space_.free_list());
+
+  // TODO(dbezhetskov): check if I need this, or it could be replaced by DCHECK.
+  allocation_top_ = rebase(original_space->allocation_top_);
+  age_mark_ = rebase(original_space->age_mark_);
+  quarantined_size_ = original_space->quarantined_size_;
+  size_after_last_gc_ = original_space->size_after_last_gc_;
+  DCHECK_EQ(to_space_.quarantined_pages_count_,
+            original_space->to_space_.quarantined_pages_count_);
+  to_space_.committed_physical_memory_ =
+      original_space->to_space().committed_physical_memory_;
+  from_space_.committed_physical_memory_ =
+      original_space->from_space().committed_physical_memory_;
+
+#ifdef DEBUG
+  size_t i = 0;
+  for (PageMetadata* cloned_page : to_space_) {
+    PageMetadata* original_page = original_to_space_pages[i];
+    Address new_area_start = rebase(original_page->area_start());
+    Address new_area_end = rebase(original_page->area_end());
+    DCHECK_EQ(cloned_page->area_start(), new_area_start);
+    DCHECK_EQ(cloned_page->area_end(), new_area_end);
+    DCHECK_EQ(cloned_page->size(), original_page->size());
+    ++i;
+  }
+
+  size_t j = 0;
+  for (PageMetadata* cloned_page : from_space_) {
+    PageMetadata* original_page = original_from_space_pages[j];
+    Address new_area_start = rebase(original_page->area_start());
+    Address new_area_end = rebase(original_page->area_end());
+    DCHECK_EQ(cloned_page->area_start(), new_area_start);
+    DCHECK_EQ(cloned_page->area_end(), new_area_end);
+    DCHECK_EQ(cloned_page->size(), original_page->size());
+    ++j;
+  }
+
+  if (to_space_.current_page()) {
+    DCHECK_EQ(to_space_.page_low(),
+              rebase(original_space->to_space_.page_low()));
+    DCHECK_EQ(to_space_.page_high(),
+              rebase(original_space->to_space_.page_high()));
+    DCHECK_EQ(to_space_.first_page()->ChunkAddress(),
+              rebase(original_space->to_space_.first_page()->ChunkAddress()));
+    DCHECK_EQ(to_space_.last_page()->ChunkAddress(),
+              rebase(original_space->to_space_.last_page()->ChunkAddress()));
+  }
+
+  if (from_space_.current_page()) {
+    DCHECK_EQ(from_space_.page_low(),
+              rebase(original_space->from_space_.page_low()));
+    DCHECK_EQ(from_space_.page_high(),
+              rebase(original_space->from_space_.page_high()));
+    DCHECK_EQ(from_space_.first_page()->ChunkAddress(),
+              rebase(original_space->from_space_.first_page()->ChunkAddress()));
+    DCHECK_EQ(from_space_.last_page()->ChunkAddress(),
+              rebase(original_space->from_space_.last_page()->ChunkAddress()));
+  }
+
+  to_space_.current_capacity_ = original_space->to_space_.current_capacity();
+  from_space_.current_capacity_ =
+      original_space->from_space_.current_capacity();
+#endif
+}
+#endif
 
 void SemiSpaceNewSpace::Grow(size_t new_capacity) {
   heap()->safepoint()->AssertActive();
@@ -484,6 +639,26 @@ bool SemiSpaceNewSpace::AddFreshPage() {
   }
   return false;
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+bool SemiSpaceNewSpace::AddToSpacePageAt(Address address) {
+  if (to_space_.AllocateFreshPageAt(address)) {
+    ResetAllocationTopToCurrentPageStart();
+    Address end = to_space_.page_high();
+    IncrementAllocationTop(end);
+    return true;
+  }
+  return false;
+}
+
+bool SemiSpaceNewSpace::AddFromSpacePageAt(Address address) {
+  if (from_space_.AllocateFreshPageAt(address)) {
+    return true;
+  }
+  return false;
+}
+#endif
+
 std::optional<std::pair<Address, Address>>
 SemiSpaceNewSpace::AllocateOnNewPageBeyondCapacity(
     int size_in_bytes, AllocationAlignment alignment) {
