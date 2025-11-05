@@ -44,6 +44,10 @@ class V8_EXPORT_PRIVATE HeapAllocator final {
 
   void SetReadOnlySpace(ReadOnlySpace*);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void SetupClone(HeapAllocator* original);
+#endif
+
   // Supports all `AllocationType` types.
   //
   // Returns a failed result on an unsuccessful allocation attempt.
