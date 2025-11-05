@@ -112,6 +112,10 @@ class V8_EXPORT_PRIVATE LargeObjectSpace : public Space {
  protected:
   LargeObjectSpace(Heap* heap, AllocationSpace id);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  LargeObjectSpace(Heap* heap, LargeObjectSpace* original, AllocationSpace id);
+#endif
+
   void AdvanceAndInvokeAllocationObservers(Address soon_object, size_t size);
 
   LargePageMetadata* AllocateLargePage(int object_size,
@@ -146,6 +150,11 @@ class OldLargeObjectSpace : public LargeObjectSpace {
  public:
   V8_EXPORT_PRIVATE explicit OldLargeObjectSpace(Heap* heap);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_EXPORT_PRIVATE OldLargeObjectSpace(Heap* heap,
+                                        OldLargeObjectSpace* original);
+#endif
+
   V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
   AllocateRaw(LocalHeap* local_heap, int object_size, AllocationHint hint);
 
@@ -153,6 +162,12 @@ class OldLargeObjectSpace : public LargeObjectSpace {
 
  protected:
   explicit OldLargeObjectSpace(Heap* heap, AllocationSpace id);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  explicit OldLargeObjectSpace(Heap* heap, OldLargeObjectSpace* original,
+                               AllocationSpace id);
+#endif
+
   V8_WARN_UNUSED_RESULT AllocationResult AllocateRaw(LocalHeap* local_heap,
                                                      int object_size,
                                                      Executability executable,
@@ -168,6 +183,10 @@ class SharedLargeObjectSpace : public OldLargeObjectSpace {
 class TrustedLargeObjectSpace : public OldLargeObjectSpace {
  public:
   explicit TrustedLargeObjectSpace(Heap* heap);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  TrustedLargeObjectSpace(Heap* heap, TrustedLargeObjectSpace* original);
+#endif
 };
 
 // Similar to the TrustedLargeObjectSpace, but for shared objects.
@@ -179,6 +198,11 @@ class SharedTrustedLargeObjectSpace : public OldLargeObjectSpace {
 class NewLargeObjectSpace : public LargeObjectSpace {
  public:
   NewLargeObjectSpace(Heap* heap, size_t capacity);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  NewLargeObjectSpace(Heap* heap, NewLargeObjectSpace* original,
+                      size_t capacity);
+#endif
 
   V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
   AllocateRaw(LocalHeap* local_heap, int object_size, AllocationHint hint);
@@ -199,6 +223,10 @@ class NewLargeObjectSpace : public LargeObjectSpace {
 class CodeLargeObjectSpace : public OldLargeObjectSpace {
  public:
   explicit CodeLargeObjectSpace(Heap* heap);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  CodeLargeObjectSpace(Heap* heap, CodeLargeObjectSpace* original);
+#endif
 
   V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
   AllocateRaw(LocalHeap* local_heap, int object_size, AllocationHint hint);
