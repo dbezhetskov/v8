@@ -57,6 +57,63 @@ LargeObjectSpace::LargeObjectSpace(Heap* heap, AllocationSpace id)
       objects_size_(0),
       pending_object_(0) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+LargeObjectSpace::LargeObjectSpace(Heap* heap, LargeObjectSpace* original,
+                                   AllocationSpace id)
+    : Space(heap, original, id, nullptr),
+      size_(0),
+      page_count_(0),
+      objects_size_(0),
+      pending_object_(0) {
+  base::MutexGuard expansion_guard(heap->heap_expansion_mutex());
+  const VirtualMemoryCage* original_cage = original->GetCage();
+  const VirtualMemoryCage* cloned_cage = GetCage();
+  for (LargePageMetadata* original_page : *original) {
+#ifdef DEBUG
+    Address new_area_start =
+        original_cage->Rebase(original_page->area_start(), cloned_cage);
+    Address new_area_end =
+        original_cage->Rebase(original_page->area_end(), cloned_cage);
+#endif
+    Address page_base =
+        original_cage->Rebase(original_page->ChunkAddress(), cloned_cage);
+    DCHECK(original_page->Chunk()->IsLargePage());
+
+    LargePageMetadata* cloned_page =
+        heap->memory_allocator()->AllocateLargePageAt(
+            this, page_base, original_page->area_size(),
+            original_page->is_executable() ? Executability::EXECUTABLE
+                                           : Executability::NOT_EXECUTABLE);
+    cloned_page->CopyStateFrom(original_page, original_cage, cloned_cage);
+
+    // Check that a newly allocated page corresponds to
+    // the same offsets.
+    DCHECK_EQ(cloned_page->area_size(), original_page->area_size());
+    DCHECK_EQ(cloned_page->area_start(), new_area_start);
+    DCHECK_EQ(cloned_page->area_end(), new_area_end);
+    DCHECK_EQ(cloned_page->size(), original_page->size());
+
+    {
+      base::RecursiveMutexGuard guard(&allocation_mutex_);
+      AddPage(cloned_page, cloned_page->area_size());
+    }
+    DCHECK_EQ(cloned_page->allocated_bytes(), original_page->allocated_bytes());
+    DCHECK_EQ(cloned_page->wasted_memory(), original_page->wasted_memory());
+  }
+
+  DCHECK_EQ(size_, original->size_);
+  DCHECK_EQ(page_count_, original->page_count_);
+  DCHECK_EQ(objects_size_, original->objects_size_);
+
+  base::MutexGuard guard(pending_allocation_mutex_);
+  const Address pending_object_addr = original->pending_object_.load();
+  if (pending_object_addr != kNullAddress) {
+    pending_object_.store(
+        original_cage->Rebase(pending_object_addr, cloned_cage));
+  }
+}
+#endif
+
 size_t LargeObjectSpace::Available() const {
   // We return zero here since we cannot take advantage of already allocated
   // large object memory.
@@ -486,6 +543,30 @@ SharedTrustedLargeObjectSpace::SharedTrustedLargeObjectSpace(Heap* heap)
 
 TrustedLargeObjectSpace::TrustedLargeObjectSpace(Heap* heap)
     : OldLargeObjectSpace(heap, TRUSTED_LO_SPACE) {}
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+OldLargeObjectSpace::OldLargeObjectSpace(Heap* heap,
+                                         OldLargeObjectSpace* original)
+    : LargeObjectSpace(heap, original, LO_SPACE) {}
+
+OldLargeObjectSpace::OldLargeObjectSpace(Heap* heap,
+                                         OldLargeObjectSpace* original,
+                                         AllocationSpace id)
+    : LargeObjectSpace(heap, original, id) {}
+
+NewLargeObjectSpace::NewLargeObjectSpace(Heap* heap,
+                                         NewLargeObjectSpace* original,
+                                         size_t capacity)
+    : LargeObjectSpace(heap, original, NEW_LO_SPACE), capacity_(capacity) {}
+
+CodeLargeObjectSpace::CodeLargeObjectSpace(Heap* heap,
+                                           CodeLargeObjectSpace* original)
+    : OldLargeObjectSpace(heap, original, CODE_LO_SPACE) {}
+
+TrustedLargeObjectSpace::TrustedLargeObjectSpace(
+    Heap* heap, TrustedLargeObjectSpace* original)
+    : OldLargeObjectSpace(heap, original, TRUSTED_LO_SPACE) {}
+#endif
 
 }  // namespace internal
 }  // namespace v8
