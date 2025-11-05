@@ -55,6 +55,50 @@ MainAllocator::MainAllocator(LocalHeap* local_heap, SpaceWithLinearArea* space,
   }
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+MainAllocator::MainAllocator(LocalHeap* local_heap, SpaceWithLinearArea* space,
+                             IsNewGeneration is_new_generation,
+                             MainAllocator* original,
+                             const VirtualMemoryCage* original_cage,
+                             const VirtualMemoryCage* cloned_cage,
+                             LinearAllocationArea* allocation_info)
+    : local_heap_(local_heap),
+      isolate_heap_(local_heap->heap()),
+      space_(space),
+      allocation_info_(allocation_info != nullptr ? allocation_info
+                                                  : &owned_allocation_info_),
+      allocator_policy_(space->CreateAllocatorPolicy(this)),
+      supports_extending_lab_(allocator_policy_->SupportsExtendingLAB()),
+      black_allocation_(ComputeBlackAllocation(is_new_generation)) {
+  CHECK_NOT_NULL(local_heap_);
+
+  auto rebase = [original_cage, cloned_cage](const Address address) {
+    if (address == kNullAddress) {
+      return address;
+    }
+    return original_cage->Rebase(address, cloned_cage);
+  };
+
+  if (local_heap_->is_main_thread()) {
+    allocation_counter_.emplace();
+    linear_area_original_data_.emplace();
+    auto [current_top, current_limit] =
+        original->linear_area_original_data_->GetTopAndLimit();
+    const Address new_top = rebase(current_top);
+    const Address new_limit = rebase(current_limit);
+    linear_area_original_data_->InitFromClone(new_top, new_limit);
+  }
+
+  DCHECK_EQ(supports_extending_lab_, original->supports_extending_lab_);
+  // TODO(dbezhetskov): check this.
+  if (original_cage->Contains(original->extended_limit_)) {
+    extended_limit_ = rebase(original->extended_limit_);
+  } else {
+    extended_limit_ = original->extended_limit_;
+  }
+}
+#endif
+
 MainAllocator::MainAllocator(Heap* heap, SpaceWithLinearArea* space, InGCTag)
     : local_heap_(nullptr),
       isolate_heap_(heap),

@@ -78,6 +78,172 @@ void HeapAllocator::Setup() {
   }
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void HeapAllocator::SetupClone(HeapAllocator* original) {
+  for (int i = FIRST_SPACE; i <= LAST_SPACE; ++i) {
+    spaces_[i] = heap_->space(i);
+  }
+
+  {
+    const auto* original_pointer_cage =
+        original->heap_->isolate()->isolate_group()->GetPtrComprCage();
+    const auto* cloned_pointer_cage =
+        heap_->isolate()->isolate_group()->GetPtrComprCage();
+    auto rebase = [original_pointer_cage,
+                   cloned_pointer_cage](const Address address) {
+      if (address == kNullAddress) {
+        return address;
+      }
+      return original_pointer_cage->Rebase(address, cloned_pointer_cage);
+    };
+
+    if ((heap_->new_space() || v8_flags.sticky_mark_bits) &&
+        local_heap_->is_main_thread()) {
+      MainAllocator* original_new_space_allocator =
+          original->new_space_allocator();
+      LinearAllocationArea* const new_allocation_info =
+          &heap_->isolate()->isolate_data()->new_allocation_info();
+      new_allocation_info->FullReset(
+          rebase(original_new_space_allocator->allocation_info().start()),
+          rebase(original_new_space_allocator->allocation_info().top()),
+          rebase(original_new_space_allocator->allocation_info().limit()));
+
+      DCHECK_EQ(new_allocation_info->top(),
+                rebase(original_new_space_allocator->allocation_info().top()));
+      DCHECK_EQ(
+          new_allocation_info->limit(),
+          rebase(original_new_space_allocator->allocation_info().limit()));
+
+      new_space_allocator_.emplace(
+          local_heap_,
+          v8_flags.sticky_mark_bits
+              ? static_cast<SpaceWithLinearArea*>(heap_->sticky_space())
+              : static_cast<SpaceWithLinearArea*>(heap_->new_space()),
+          MainAllocator::IsNewGeneration::kYes, original_new_space_allocator,
+          original_pointer_cage, cloned_pointer_cage, new_allocation_info);
+    }
+
+    if (local_heap_->is_main_thread()) {
+      Address* last_young_allocation_pointer = reinterpret_cast<Address*>(
+          heap_->isolate()->isolate_data()->last_young_allocation_address());
+      Address* original_last_young_allocation_pointer =
+          reinterpret_cast<Address*>(original->heap_->isolate()
+                                         ->isolate_data()
+                                         ->last_young_allocation_address());
+      if (original_last_young_allocation_pointer) {
+        *last_young_allocation_pointer =
+            rebase(*original_last_young_allocation_pointer);
+      }
+      last_young_allocation_pointer_ = last_young_allocation_pointer;
+    } else {
+      last_young_allocation_.emplace(kNullAddress);
+      last_young_allocation_pointer_ = &last_young_allocation_.value();
+    }
+
+    MainAllocator* original_old_space_allocator =
+        original->old_space_allocator();
+    LinearAllocationArea* const old_allocation_info =
+        local_heap_->is_main_thread()
+            ? &heap_->isolate()->isolate_data()->old_allocation_info()
+            : nullptr;
+    if (old_allocation_info) {
+      old_allocation_info->FullReset(
+          rebase(original_old_space_allocator->allocation_info().start()),
+          rebase(original_old_space_allocator->allocation_info().top()),
+          rebase(original_old_space_allocator->allocation_info().limit()));
+      DCHECK_EQ(old_allocation_info->top(),
+                rebase(original_old_space_allocator->allocation_info().top()));
+      DCHECK_EQ(
+          old_allocation_info->limit(),
+          rebase(original_old_space_allocator->allocation_info().limit()));
+    }
+
+    old_space_allocator_.emplace(
+        local_heap_, heap_->old_space(), MainAllocator::IsNewGeneration::kNo,
+        original_old_space_allocator, original_pointer_cage,
+        cloned_pointer_cage, old_allocation_info);
+  }
+
+  {
+    const auto* original_trust_cage =
+        original->heap_->isolate()->isolate_group()->GetTrustedPtrComprCage();
+    const auto* cloned_trust_cage =
+        heap_->isolate()->isolate_group()->GetTrustedPtrComprCage();
+    MainAllocator* original_trusted_space_allocator =
+        original->trusted_space_allocator();
+    trusted_space_allocator_.emplace(local_heap_, heap_->trusted_space(),
+                                     MainAllocator::IsNewGeneration::kNo,
+                                     original_trusted_space_allocator,
+                                     original_trust_cage, cloned_trust_cage);
+
+    auto rebase_trusted = [original_trust_cage,
+                           cloned_trust_cage](const Address address) {
+      if (address == kNullAddress) {
+        return address;
+      }
+      return original_trust_cage->Rebase(address, cloned_trust_cage);
+    };
+    trusted_space_allocator_->allocation_info().FullReset(
+        rebase_trusted(
+            original_trusted_space_allocator->allocation_info().start()),
+        rebase_trusted(
+            original_trusted_space_allocator->allocation_info().top()),
+        rebase_trusted(
+            original_trusted_space_allocator->allocation_info().limit()));
+    DCHECK_EQ(trusted_space_allocator()->top(),
+              rebase_trusted(
+                  original_trusted_space_allocator->allocation_info().top()));
+    DCHECK_EQ(trusted_space_allocator()->limit(),
+              rebase_trusted(
+                  original_trusted_space_allocator->allocation_info().limit()));
+  }
+
+  {
+    const auto* original_code_cage =
+        original->heap_->isolate()->isolate_group()->GetCodeRange();
+    const auto* cloned_code_cage =
+        heap_->isolate()->isolate_group()->GetCodeRange();
+    MainAllocator* original_code_space_allocator =
+        original->code_space_allocator();
+    code_space_allocator_.emplace(
+        local_heap_, heap_->code_space(), MainAllocator::IsNewGeneration::kNo,
+        original_code_space_allocator, original_code_cage, cloned_code_cage);
+    auto rebase_code = [original_code_cage,
+                        cloned_code_cage](const Address address) {
+      if (address == kNullAddress) {
+        return address;
+      }
+      return original_code_cage->Rebase(address, cloned_code_cage);
+    };
+
+    code_space_allocator_->allocation_info().FullReset(
+        rebase_code(original_code_space_allocator->allocation_info().start()),
+        rebase_code(original_code_space_allocator->allocation_info().top()),
+        rebase_code(original_code_space_allocator->allocation_info().limit()));
+
+    DCHECK_EQ(
+        code_space_allocator()->top(),
+        rebase_code(original_code_space_allocator->allocation_info().top()));
+    DCHECK_EQ(
+        code_space_allocator()->limit(),
+        rebase_code(original_code_space_allocator->allocation_info().limit()));
+  }
+
+  if (heap_->isolate()->has_shared_space()) {
+    // TODO(dbezhetskov): handle these allocators too.
+    shared_space_allocator_.emplace(local_heap_,
+                                    heap_->shared_allocation_space(),
+                                    MainAllocator::IsNewGeneration::kNo);
+    shared_lo_space_ = heap_->shared_lo_allocation_space();
+
+    shared_trusted_space_allocator_.emplace(
+        local_heap_, heap_->shared_trusted_allocation_space(),
+        MainAllocator::IsNewGeneration::kNo);
+    shared_trusted_lo_space_ = heap_->shared_trusted_lo_allocation_space();
+  }
+}
+#endif
+
 void HeapAllocator::SetReadOnlySpace(ReadOnlySpace* read_only_space) {
   read_only_space_ = read_only_space;
 }

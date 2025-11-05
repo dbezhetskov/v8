@@ -10,6 +10,10 @@
 #include "include/v8-internal.h"
 #include "src/common/checks.h"
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include "src/utils/allocation.h"
+#endif
+
 namespace v8::internal {
 
 // A linear allocation area to allocate objects from.
@@ -30,6 +34,15 @@ class LinearAllocationArea final {
     limit_ = limit;
     Verify();
   }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void FullReset(Address start, Address top, Address limit) {
+    start_ = start;
+    top_ = top;
+    limit_ = limit;
+    Verify();
+  }
+#endif
 
   void ResetStart() { start_ = top_; }
 

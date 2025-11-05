@@ -140,6 +140,13 @@ class LinearAreaOriginalData {
 
   void SetTopAndLimit(Address top, Address limit);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void InitFromClone(Address new_top, Address new_limit_) {
+    original_top_.store(new_top);
+    original_limit_.store(new_limit_);
+  }
+#endif
+
  private:
   // The top and the limit at the time of setting the linear allocation area.
   // These values can be accessed by background tasks. Protected by mutex_.
@@ -164,6 +171,15 @@ class MainAllocator {
       LocalHeap* heap, SpaceWithLinearArea* space,
       IsNewGeneration is_new_generation,
       LinearAllocationArea* allocation_info = nullptr);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  V8_EXPORT_PRIVATE MainAllocator(
+      LocalHeap* heap, SpaceWithLinearArea* space,
+      IsNewGeneration is_new_generation, MainAllocator* original,
+      const VirtualMemoryCage* original_cage,
+      const VirtualMemoryCage* cloned_cage,
+      LinearAllocationArea* allocation_info = nullptr);
+#endif
 
   // Use this constructor for GC LABs/allocations.
   V8_EXPORT_PRIVATE MainAllocator(Heap* heap, SpaceWithLinearArea* space,
