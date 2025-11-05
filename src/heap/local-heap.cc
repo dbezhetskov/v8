@@ -137,6 +137,16 @@ void LocalHeap::SetUpMainThread() {
   SetUpSharedMarking();
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void LocalHeap::SetUpMainThreadClone(LocalHeap* original) {
+  DCHECK(is_main_thread());
+  DCHECK(IsRunning());
+  heap_allocator_.SetupClone(&original->heap_allocator_);
+  SetUpMarkingBarrier();
+  SetUpSharedMarking();
+}
+#endif
+
 void LocalHeap::SetUpMarkingBarrier() {
   DCHECK_NULL(marking_barrier_);
   marking_barrier_ = std::make_unique<MarkingBarrier>(this);

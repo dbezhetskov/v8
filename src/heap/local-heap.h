@@ -394,6 +394,10 @@ class V8_EXPORT_PRIVATE LocalHeap {
   // Set up this LocalHeap as main thread.
   void SetUpMainThread();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void SetUpMainThreadClone(LocalHeap* original);
+#endif
+
   void SetUpMarkingBarrier();
   void SetUpSharedMarking();
 
