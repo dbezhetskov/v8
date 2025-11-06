@@ -6317,6 +6317,107 @@ void Heap::SetUpSpaces() {
   }
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void Heap::SetUpSpacesClone(Heap* original) {
+  // Ensure SetUpFromReadOnlySpace has been ran.
+  DCHECK_NOT_NULL(read_only_space_);
+
+  if (v8_flags.sticky_mark_bits) {
+    DCHECK(false);  // NYI.
+  } else {
+    space_[OLD_SPACE] = std::make_unique<OldSpace>(this, original->old_space());
+    old_space_ = static_cast<OldSpace*>(space_[OLD_SPACE].get());
+  }
+
+  if (!v8_flags.single_generation) {
+    if (!v8_flags.sticky_mark_bits) {
+      if (v8_flags.minor_ms) {
+        DCHECK(false);  // NYI.
+      } else {
+        space_[NEW_SPACE] = std::make_unique<SemiSpaceNewSpace>(
+            this, original->semi_space_new_space());
+      }
+      new_space_ = static_cast<NewSpace*>(space_[NEW_SPACE].get());
+    }
+
+    space_[NEW_LO_SPACE] = std::make_unique<NewLargeObjectSpace>(
+        this, original->new_lo_space(), NewSpaceCapacity());
+    new_lo_space_ =
+        static_cast<NewLargeObjectSpace*>(space_[NEW_LO_SPACE].get());
+  }
+
+  space_[CODE_SPACE] =
+      std::make_unique<CodeSpace>(this, original->code_space());
+  code_space_ = static_cast<CodeSpace*>(space_[CODE_SPACE].get());
+
+  space_[LO_SPACE] =
+      std::make_unique<OldLargeObjectSpace>(this, original->lo_space());
+  lo_space_ = static_cast<OldLargeObjectSpace*>(space_[LO_SPACE].get());
+
+  space_[CODE_LO_SPACE] =
+      std::make_unique<CodeLargeObjectSpace>(this, original->code_lo_space());
+  code_lo_space_ =
+      static_cast<CodeLargeObjectSpace*>(space_[CODE_LO_SPACE].get());
+
+  space_[TRUSTED_SPACE] =
+      std::make_unique<TrustedSpace>(this, original->trusted_space());
+  trusted_space_ = static_cast<TrustedSpace*>(space_[TRUSTED_SPACE].get());
+
+  space_[TRUSTED_LO_SPACE] = std::make_unique<TrustedLargeObjectSpace>(
+      this, original->trusted_lo_space());
+  trusted_lo_space_ =
+      static_cast<TrustedLargeObjectSpace*>(space_[TRUSTED_LO_SPACE].get());
+
+  if (isolate()->is_shared_space_isolate()) {
+    DCHECK(!v8_flags.sticky_mark_bits);
+    DCHECK(false);  // NYI.
+  }
+
+  if (isolate()->has_shared_space()) {
+    DCHECK(false);  // NYI.
+  }
+
+  main_thread_local_heap()->SetUpMainThreadClone(
+      original->main_thread_local_heap());
+
+  base::TimeTicks startup_time = base::TimeTicks::Now();
+
+  tracer_.reset(new GCTracer(this, startup_time));
+  array_buffer_sweeper_.reset(new ArrayBufferSweeper(this));
+  memory_measurement_.reset(new MemoryMeasurement(isolate()));
+  if (v8_flags.memory_reducer) memory_reducer_.reset(new MemoryReducer(this));
+  if (V8_UNLIKELY(TracingFlags::is_gc_stats_enabled())) {
+    live_object_stats_.reset(new ObjectStats(this));
+    dead_object_stats_.reset(new ObjectStats(this));
+  }
+  if (Heap::AllocationTrackerForDebugging::IsNeeded()) {
+    allocation_tracker_for_debugging_ =
+        std::make_unique<Heap::AllocationTrackerForDebugging>(this);
+  }
+
+  LOG(isolate_, IntPtrTEvent("heap-capacity", Capacity()));
+  LOG(isolate_, IntPtrTEvent("heap-available", Available()));
+
+  SetGetExternallyAllocatedMemoryInBytesCallback(ReturnNull);
+
+  if (v8_flags.stress_marking > 0) {
+    stress_marking_percentage_ = NextStressMarkingLimit();
+  }
+  if (IsStressingScavenge()) {
+    stress_scavenge_observer_ = new StressScavengeObserver(this);
+    allocator()->new_space_allocator()->AddAllocationObserver(
+        stress_scavenge_observer_);
+  }
+
+  if (v8_flags.memory_balancer) {
+    mb_.reset(new MemoryBalancer(this, startup_time));
+  }
+
+  // It is not longer a clone it is a fully instantiated heap.
+  is_clone_heap_construction_ = false;
+}
+#endif
+
 void Heap::InitializeHashSeed() {
   DCHECK(!deserialization_complete_);
   uint64_t new_hash_seed;

@@ -60,6 +60,21 @@ MemoryChunk::MemoryChunk(MainThreadFlags flags, MemoryChunkMetadata* metadata)
 }
 
 #ifdef V8_ENABLE_SANDBOX
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+// static
+void MemoryChunk::UpdateMPT(Address chunk_address,
+                            MemoryChunkMetadata* metadata) {
+  auto metadata_index = MetadataTableIndex(chunk_address);
+  IsolateGroup::MemoryChunkMetadataTableEntry* metadata_pointer_table =
+      MetadataTableAddress();
+  DCHECK_IMPLIES(metadata_pointer_table[metadata_index].metadata() != nullptr,
+                 metadata_pointer_table[metadata_index].metadata() == metadata);
+  metadata_pointer_table[metadata_index].SetMetadata(
+      metadata, metadata->heap()->isolate());
+}
+#endif
+
 // static
 void MemoryChunk::ClearMetadataPointer(MemoryChunkMetadata* metadata) {
   uint32_t metadata_index = MetadataTableIndex(metadata->ChunkAddress());
