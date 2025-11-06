@@ -332,6 +332,28 @@ CodeRange* IsolateGroup::EnsureCodeRange(size_t requested_size) {
   return code_range_.get();
 }
 
+CodeRange* IsolateGroup::EnsureCodeRange(size_t requested_size,
+                                         CodeRange* original) {
+  if (code_range_) {
+    return code_range_.get();
+  }
+  DCHECK(!process_wide_);
+  CodeRange* code_range = new CodeRange();
+  if (!code_range->InitReservation(page_allocator_, requested_size,
+                                   /* immutable */ false, original)) {
+    V8::FatalProcessOutOfMemory(
+        nullptr, "Failed to reserve virtual memory for CodeRange");
+  }
+  code_range_.reset(code_range);
+
+#ifdef V8_EXTERNAL_CODE_SPACE
+  ExternalCodeCompressionScheme::InitBase(
+      ExternalCodeCompressionScheme::PrepareCageBaseAddress(
+          code_range->base()));
+#endif  // V8_EXTERNAL_CODE_SPACE
+  return code_range_.get();
+}
+
 ReadOnlyArtifacts* IsolateGroup::InitializeReadOnlyArtifacts() {
   mutex_.AssertHeld();
   DCHECK(!read_only_artifacts_);
