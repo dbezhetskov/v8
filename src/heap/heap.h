@@ -829,6 +829,9 @@ class Heap final {
   void SetUpSpaces();
 
 #ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // Prepares the heap, setting up for cloning.
+  void SetUpClone(LocalHeap* main_thread_local_heap, Heap* target);
+
   // Sets up the heap memory without creating any objects
   // as an clone of the original heap.
   void SetUpSpacesClone(Heap* original);
