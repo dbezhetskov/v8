@@ -46,8 +46,12 @@ namespace internal {
 PageMetadata* SemiSpace::InitializePage(MutablePageMetadata* mutable_page) {
   bool in_to_space = (id() != kFromSpace);
   MemoryChunk* chunk = mutable_page->Chunk();
-  mutable_page->SetFlagNonExecutable(in_to_space ? MemoryChunk::TO_PAGE
-                                                 : MemoryChunk::FROM_PAGE);
+  if (!heap_->is_clone_heap_construction()) {
+    // We don't need to set flags because for cloned chunks
+    // flags was set up as part of the original chunk initialization.
+    mutable_page->SetFlagNonExecutable(in_to_space ? MemoryChunk::TO_PAGE
+                                                   : MemoryChunk::FROM_PAGE);
+  }
   PageMetadata* page = PageMetadata::cast(mutable_page);
   page->list_node().Initialize();
   CHECK(page->IsLivenessClear());
