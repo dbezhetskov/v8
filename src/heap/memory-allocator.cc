@@ -280,7 +280,8 @@ void MemoryAllocator::UnregisterSharedMemoryChunk(MemoryChunkMetadata* chunk) {
 void MemoryAllocator::UnregisterMemoryChunk(
     MemoryChunkMetadata* chunk_metadata) {
   MemoryChunk* chunk = chunk_metadata->Chunk();
-  DCHECK(!chunk_metadata->is_unregistered());
+  DCHECK_IMPLIES(!isolate_->heap()->is_clone_heap_construction(),
+                 !chunk_metadata->is_unregistered());
   VirtualMemory* reservation = chunk_metadata->reserved_memory();
   const size_t size =
       reservation->IsReserved() ? reservation->size() : chunk_metadata->size();
@@ -300,7 +301,8 @@ void MemoryAllocator::UnregisterMemoryChunk(
   }
   // For non-RO pages we want to set them as UNREGISTERED to allow actually
   // freeing them.
-  if (!chunk->InReadOnlySpace()) {
+  if (!isolate_->heap()->is_clone_heap_construction() &&
+      !chunk->InReadOnlySpace()) {
     // Cannot use MutablePageMetadata::cast() because that relies on having an
     // owner() which is unsed at this point.
     reinterpret_cast<MutablePageMetadata*>(chunk_metadata)
@@ -531,12 +533,30 @@ PageMetadata* MemoryAllocator::AllocatePageAt(Space* space,
       &trusted_flags);
   if (executable) {
     RwxMemoryWriteScope scope("Initialize a new MemoryChunk.");
-    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    if (isolate_->heap()->is_clone_heap_construction()) {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+      MemoryChunk::UpdateMPT(reinterpret_cast<Address>(chunk_info->chunk),
+                             metadata);
+#endif
+    } else {
+      new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    }
 #ifdef DEBUG
     RegisterExecutableMemoryChunk(metadata);
 #endif  // DEBUG
   } else {
-    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    if (isolate_->heap()->is_clone_heap_construction()) {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+      // We don't need to construct memory chunk because we already have one
+      // in memory and it should be with the same data.
+      // There is way to avoid this change and just reset cloned sandbox after
+      // creation and reduce diff with upstream but it will be slower a bit.
+      MemoryChunk::UpdateMPT(reinterpret_cast<Address>(chunk_info->chunk),
+                             metadata);
+#endif
+    } else {
+      new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    }
   }
 
   DCHECK(metadata->IsLivenessClear());
@@ -576,12 +596,27 @@ LargePageMetadata* MemoryAllocator::AllocateLargePageAt(
       &trusted_flags);
   if (executable) {
     RwxMemoryWriteScope scope("Initialize a new MemoryChunk.");
-    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    if (isolate_->heap()->is_clone_heap_construction()) {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+      // See comment in AllocatePageAt.
+      MemoryChunk::UpdateMPT(reinterpret_cast<Address>(chunk_info->chunk),
+                             metadata);
+#endif
+    } else {
+      new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    }
 #ifdef DEBUG
     RegisterExecutableMemoryChunk(metadata);
 #endif  // DEBUG
   } else {
-    new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    if (isolate_->heap()->is_clone_heap_construction()) {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+      MemoryChunk::UpdateMPT(reinterpret_cast<Address>(chunk_info->chunk),
+                             metadata);
+#endif
+    } else {
+      new (chunk_info->chunk) MemoryChunk(trusted_flags, metadata);
+    }
   }
 
   RecordMemoryChunkCreated(metadata);

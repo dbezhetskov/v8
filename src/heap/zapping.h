@@ -16,6 +16,12 @@ namespace v8::internal::heap {
 
 // Zapping is needed for verify heap, and always done in debug builds.
 inline bool ShouldZapGarbage() {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // During page initialization we sometimes
+  // call this for cloned pages and obviously
+  // we don't want to spoil the original content.
+  return false;
+#endif
 #ifdef DEBUG
   return true;
 #else

@@ -133,6 +133,10 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
 
   MemoryChunk(MainThreadFlags flags, MemoryChunkMetadata* metadata);
 
+#if V8_ENABLE_SANDBOX && V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  static void UpdateMPT(Address chunk_address, MemoryChunkMetadata* metadata);
+#endif
+
   V8_INLINE Address address() const { return reinterpret_cast<Address>(this); }
 
   static constexpr Address BaseAddress(Address a) {
