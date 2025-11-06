@@ -93,14 +93,18 @@ size_t PagedSpaceBase::FreeInternal(Address start, size_t size_in_bytes) {
   if (executable_) {
     WritableJitPage jit_page(start, size_in_bytes);
     WritableFreeSpace free_space = jit_page.FreeRange(start, size_in_bytes);
-    heap()->CreateFillerObjectAtBackground(free_space);
+    if (!heap()->is_clone_heap_construction()) {
+      heap()->CreateFillerObjectAtBackground(free_space);
+    }
     wasted =
         free_list_->Free(heap()->isolate(), free_space,
                          during_sweep ? kDoNotLinkCategory : kLinkCategory);
   } else {
     WritableFreeSpace free_space =
         WritableFreeSpace::ForNonExecutableMemory(start, size_in_bytes);
-    heap()->CreateFillerObjectAtBackground(free_space);
+    if (!heap()->is_clone_heap_construction()) {
+      heap()->CreateFillerObjectAtBackground(free_space);
+    }
     wasted =
         free_list_->Free(heap()->isolate(), free_space,
                          during_sweep ? kDoNotLinkCategory : kLinkCategory);
