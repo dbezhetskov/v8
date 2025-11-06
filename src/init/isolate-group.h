@@ -238,6 +238,7 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 #endif  // V8_COMPRESS_POINTERS
 
   CodeRange* EnsureCodeRange(size_t requested_size);
+  CodeRange* EnsureCodeRange(size_t requested_size, CodeRange* original);
   CodeRange* GetCodeRange() const { return code_range_.get(); }
 
 #ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
