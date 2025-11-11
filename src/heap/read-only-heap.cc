@@ -78,6 +78,101 @@ void ReadOnlyHeap::SetUp(Isolate* isolate,
   }
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void ReadOnlyHeap::SetUpClone(Isolate* clone_isolate,
+                              const Isolate* original_isolate) {
+  DCHECK_NOT_NULL(clone_isolate);
+
+  IsolateGroup* cloned_group = clone_isolate->isolate_group();
+  IsolateGroup* original_group = original_isolate->isolate_group();
+  original_group->mutex()->AssertHeld();
+  cloned_group->mutex()->AssertHeld();
+  if (!cloned_group->read_only_artifacts()) {
+    // Recreate read-only artifacts since we already have mapped read only pages
+    // in memory.
+    ReadOnlyArtifacts* new_ro_artifacts =
+        cloned_group->InitializeReadOnlyArtifacts();
+    CreateInitialHeapForBootstrapping(clone_isolate, new_ro_artifacts);
+    ReadOnlySpace* cloned_ro_space =
+        new_ro_artifacts->read_only_heap()->read_only_space();
+
+    auto rebase = [original_cage = original_group->GetPtrComprCage(),
+                   cloned_cage =
+                       cloned_group->GetPtrComprCage()](Address address) {
+      if (address == kNullAddress) {
+        return address;
+      }
+      return original_cage->Rebase(address, cloned_cage);
+    };
+
+    // Repeat steps from deserialization but
+    // without real deserialization.
+    for (ReadOnlyPageMetadata* original_page :
+         original_group->read_only_artifacts()->pages()) {
+      Address new_memory_chunk_start =
+          rebase(original_page->Chunk()->address());
+      size_t actual_idx =
+          cloned_ro_space->AllocateNextPageAt(new_memory_chunk_start);
+      DCHECK_EQ(cloned_ro_space->pages_[actual_idx]->area_start(),
+                rebase(original_page->area_start()));
+      cloned_ro_space->InitializePageForDeserialization(
+          cloned_ro_space->pages_[actual_idx],
+          original_page->allocated_bytes());
+    }
+    ReadOnlyRoots(clone_isolate)
+        .InitFromStaticRootsTable(clone_isolate->cage_base());
+    cloned_ro_space->FinalizeSpaceAfterCloning();
+    cloned_ro_space->DetachPagesAndAddToArtifacts(new_ro_artifacts);
+    new_ro_artifacts->ReinstallReadOnlySpace(clone_isolate);
+    new_ro_artifacts->read_only_heap()->read_only_space_ =
+        new_ro_artifacts->shared_read_only_space();
+#ifdef DEBUG
+    new_ro_artifacts->VerifyHeapAndSpaceRelationships(clone_isolate);
+#endif
+    cloned_group->read_only_artifacts()->set_initial_next_unique_sfi_id(
+        clone_isolate->next_unique_sfi_id());
+
+    // Copy with adjusting read only roots.
+    int index = 0;
+    for (Address old_root_address :
+         original_group->shared_read_only_heap()->read_only_roots_) {
+      new_ro_artifacts->read_only_heap()->read_only_roots_[index] =
+          rebase(old_root_address);
+      ++index;
+    }
+    new_ro_artifacts->read_only_heap()->roots_init_complete_ = true;
+
+    // Copy external pointer registry which
+    // is needed for EPT read-only segments initialization.
+    std::vector<ReadOnlyArtifacts::ExternalPointerRegistryEntry> registry =
+        original_group->read_only_artifacts()->external_pointer_registry();
+    new_ro_artifacts->set_external_pointer_registry(std::move(registry));
+
+#ifdef DEBUG
+    ReadOnlySpace* original_ro_space =
+        original_group->shared_read_only_heap()->read_only_space();
+    cloned_ro_space = cloned_group->shared_read_only_heap()->read_only_space();
+    DCHECK_EQ(rebase(original_ro_space->top_), cloned_ro_space->top_);
+    DCHECK_EQ(rebase(original_ro_space->limit_), cloned_ro_space->limit_);
+    DCHECK_EQ(original_ro_space->accounting_stats_.Capacity(),
+              cloned_ro_space->accounting_stats_.Capacity());
+    DCHECK_EQ(original_ro_space->accounting_stats_.Size(),
+              cloned_ro_space->accounting_stats_.Size());
+#endif
+  } else {
+    ReadOnlyArtifacts* artifacts = cloned_group->read_only_artifacts();
+    DCHECK_NOT_NULL(artifacts);
+    clone_isolate->SetUpFromReadOnlyArtifacts(artifacts);
+  }
+
+  cloned_group->read_only_artifacts()->read_only_heap()->InitializeIsolateRoots(
+      clone_isolate);
+  clone_isolate->external_pointer_table().SetUpFromReadOnlyArtifacts(
+      clone_isolate->heap()->read_only_external_pointer_space(),
+      cloned_group->read_only_artifacts());
+}
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+
 void ReadOnlyHeap::DeserializeIntoIsolate(Isolate* isolate,
                                           SnapshotData* read_only_snapshot_data,
                                           bool can_rehash) {
