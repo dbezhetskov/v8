@@ -53,6 +53,10 @@ class ReadOnlyHeap final {
   static void SetUp(Isolate* isolate, SnapshotData* read_only_snapshot_data,
                     bool can_rehash);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  static void SetUpClone(Isolate* isolate, const Isolate* original_isolate);
+#endif
+
   // Indicates that the isolate has been set up and all read-only space objects
   // have been created and will not be written to. This should only be called if
   // a deserializer was not previously provided to Setup. This releases the

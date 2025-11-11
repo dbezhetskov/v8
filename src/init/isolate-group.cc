@@ -366,6 +366,15 @@ ReadOnlyArtifacts* IsolateGroup::InitializeReadOnlyArtifacts() {
 std::weak_ptr<PageAllocator> IsolateGroup::GetBackingStorePageAllocator() {
   return sandbox()->page_allocator_weak();
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void IsolateGroup::SetupReadOnlyHeapClone(Isolate* isolate, Isolate* original) {
+  DCHECK_EQ(isolate->isolate_group(), this);
+  base::MutexGuard original_group_guard(original->isolate_group()->mutex());
+  base::MutexGuard cloned_group_guard(&mutex_);
+  ReadOnlyHeap::SetUpClone(isolate, original);
+}
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 #endif  // V8_ENABLE_SANDBOX
 
 void IsolateGroup::SetupReadOnlyHeap(Isolate* isolate,
