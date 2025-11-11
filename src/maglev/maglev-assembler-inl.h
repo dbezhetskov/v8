@@ -732,7 +732,14 @@ void MoveArgumentsForBuiltin(MaglevAssembler* masm, Args&&... args) {
         DCHECK_EQ(target, arg.location()->AssignedGeneralRegister());
         USE(target);
       } else {
-        masm->Move(target, std::forward<Arg>(arg));
+        if constexpr (!std::is_same_v<std::decay_t<Arg>, Handle<BytecodeArray>> &&
+                      std::is_convertible_v<std::decay_t<Arg>,
+                                            Handle<HeapObject>>) {
+          masm->MoveTagged(target, std::forward<Arg>(arg));
+          masm->DecompressTagged(target, target);
+        } else {
+          masm->Move(target, std::forward<Arg>(arg));
+        }
       }
 #ifdef DEBUG
       written_registers.set(target);
@@ -758,7 +765,9 @@ void MoveArgumentsForBuiltin(MaglevAssembler* masm, Args&&... args) {
       // TODO(leszeks): Include the context register in the parallel moves
       // described above.
       static_assert(!std::is_same_v<Register, std::decay_t<decltype(context)>>);
-      masm->Move(Descriptor::ContextRegister(), context);
+      masm->MoveTagged(Descriptor::ContextRegister(), context);
+      masm->DecompressTagged(Descriptor::ContextRegister(),
+                             Descriptor::ContextRegister());
     }
   }
 }

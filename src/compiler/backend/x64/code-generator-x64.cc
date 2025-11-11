@@ -8409,7 +8409,16 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
         if (IsMaterializableFromRoot(src_object, &index)) {
           __ LoadRoot(dst, index);
         } else {
+#ifdef V8_COMPRESS_POINTERS
+          if (TrustedHeapLayout::InTrustedSpace(*src_object)) {
+            __ Move(dst, src_object);
+          } else {
+            __ Move(dst, src_object, RelocInfo::COMPRESSED_EMBEDDED_OBJECT);
+            __ DecompressTagged(dst, dst);
+          }
+#else
           __ Move(dst, src_object);
+#endif
         }
         break;
       }

@@ -200,7 +200,14 @@ struct ArgumentSettingHelper<Descriptor, ArgIndex, true, Arg, Args...> {
     static_assert(ArgIndex < Descriptor::GetRegisterParameterCount());
     Register target = Descriptor::GetRegisterParameter(ArgIndex);
     CheckSettingDoesntClobber(target, args...);
-    masm->Move(target, arg);
+    if constexpr (!std::is_same_v<std::decay_t<Arg>, Handle<BytecodeArray>> &&
+                  std::is_convertible_v<std::decay_t<Arg>,
+                                        Handle<HeapObject>>) {
+      masm->MoveTagged(target, arg);
+      masm->DecompressTagged(target, target);
+    } else {
+      masm->Move(target, arg);
+    }
     ArgumentSettingHelper<Descriptor, ArgIndex + 1,
                           (ArgIndex + 1 <
                            Descriptor::GetRegisterParameterCount()),
@@ -397,7 +404,13 @@ Tagged<Smi> BaselineCompiler::ConstantSmi(int operand_index) {
 }
 template <typename Type>
 void BaselineCompiler::LoadConstant(Register output, int operand_index) {
-  __ Move(output, Constant<Type>(operand_index));
+  if constexpr (!std::is_same_v<std::decay_t<Type>, BytecodeArray> &&
+                std::is_convertible_v<std::decay_t<Type>, HeapObject>) {
+    __ MoveTagged(output, Constant<Type>(operand_index));
+    __ DecompressTagged(output, output);
+  } else {
+    __ Move(output, Constant<Type>(operand_index));
+  }
 }
 uint32_t BaselineCompiler::Uint(int operand_index) {
   return iterator().GetUnsignedImmediateOperand(operand_index);

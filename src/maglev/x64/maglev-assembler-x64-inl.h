@@ -664,6 +664,16 @@ void MaglevAssembler::MoveTagged(Register dst, Handle<HeapObject> obj) {
 #endif
 }
 
+void MaglevAssembler::LoadNativeContextInPinnedRegister() {
+#ifdef V8_COMPRESS_POINTERS
+  MacroAssembler::Move(kContextRegister, native_context().object(),
+                       RelocInfo::COMPRESSED_EMBEDDED_OBJECT);
+  DecompressTagged(kContextRegister, kContextRegister);
+#else
+  MacroAssembler::Move(kContextRegister, masm->native_context().object());
+#endif
+}
+
 inline void MaglevAssembler::Move(Register dst, intptr_t p) {
   MacroAssembler::Move(dst, p);
 }

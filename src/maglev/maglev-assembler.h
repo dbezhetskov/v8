@@ -479,6 +479,7 @@ class V8_EXPORT_PRIVATE MaglevAssembler : public MacroAssembler {
   void Move(ExternalReference dst, int32_t imm);
 
   inline void MoveTagged(Register dst, Handle<HeapObject> obj);
+  inline void LoadNativeContextInPinnedRegister();
 
   inline void LoadMapForCompare(Register dst, Register obj);
 
