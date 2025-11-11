@@ -835,6 +835,9 @@ class Heap final {
   // Sets up the heap memory without creating any objects
   // as an clone of the original heap.
   void SetUpSpacesClone(Heap* original);
+
+  void RebaseAbsolutePointersToTrustedCage(
+      VirtualMemoryCage* original_trusted_cage);
 #endif
 
   // Prepares the heap, setting up for deserialization.
