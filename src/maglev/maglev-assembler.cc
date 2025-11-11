@@ -680,7 +680,7 @@ void MaglevAssembler::TryMigrateInstance(Register object,
     SaveRegisterStateForCall save_register_state(this, register_snapshot);
 
     Push(object);
-    Move(kContextRegister, native_context().object());
+    LoadNativeContextInPinnedRegister();
     CallRuntime(Runtime::kTryMigrateInstance);
     save_register_state.DefineSafepoint();
 
