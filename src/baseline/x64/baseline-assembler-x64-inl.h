@@ -230,6 +230,18 @@ void BaselineAssembler::MoveSmi(Register output, Register source) {
   __ mov_tagged(output, source);
 }
 
+void BaselineAssembler::MoveTagged(Register output, Handle<HeapObject> value) {
+#ifdef V8_COMPRESS_POINTERS
+  __ Move(output, value, RelocInfo::COMPRESSED_EMBEDDED_OBJECT);
+#else
+  __ Move(output, value);
+#endif
+}
+
+void BaselineAssembler::DecompressTagged(Register output, Register source) {
+  __ DecompressTagged(output, source);
+}
+
 namespace detail {
 inline void PushSingle(MacroAssembler* masm, RootIndex source) {
   masm->PushRoot(source);
