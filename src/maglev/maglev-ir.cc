@@ -1049,7 +1049,8 @@ void HoleyFloat64Constant::DoLoadToRegister(MaglevAssembler* masm,
 }
 
 void Constant::DoLoadToRegister(MaglevAssembler* masm, Register reg) const {
-  __ Move(reg, object_.object());
+  __ MoveTagged(reg, object_.object());
+  __ DecompressTagged(reg, reg);
 }
 
 void RootConstant::DoLoadToRegister(MaglevAssembler* masm, Register reg) const {
@@ -4049,8 +4050,10 @@ void ConvertReceiver::GenerateCode(MaglevAssembler* masm,
         v8_flags.debug_code ? Label::Distance::kFar : Label::Distance::kNear);
     __ bind(&convert_global_proxy);
     // Patch receiver to global proxy.
-    __ Move(ToRegister(result()),
-            native_context_.global_proxy_object(broker).object());
+    auto dst_register = ToRegister(result());
+    __ MoveTagged(dst_register,
+                  native_context_.global_proxy_object(broker).object());
+    __ DecompressTagged(dst_register, dst_register);
     __ Jump(&done);
   }
 
@@ -4089,7 +4092,7 @@ void CheckDerivedConstructResult::GenerateCode(MaglevAssembler* masm,
   __ bind(&do_throw);
   __ Jump(__ MakeDeferredCode(
       [](MaglevAssembler* masm, CheckDerivedConstructResult* node) {
-        __ Move(kContextRegister, masm->native_context().object());
+        __ LoadNativeContextInPinnedRegister();
         __ CallRuntime(Runtime::kThrowConstructorReturnedNonObject);
         masm->DefineExceptionHandlerAndLazyDeoptPoint(node);
         __ Abort(AbortReason::kUnexpectedReturnFromThrow);
@@ -4401,7 +4404,7 @@ void HasInPrototypeChain::GenerateCode(MaglevAssembler* masm,
             snapshot.live_registers.clear(result_reg);
             SaveRegisterStateForCall save_register_state(masm, snapshot);
             __ Push(object_reg, node->prototype().object());
-            __ Move(kContextRegister, masm->native_context().object());
+            __ LoadNativeContextInPinnedRegister();
             __ CallRuntime(Runtime::kHasInPrototypeChain, 2);
             masm->DefineExceptionHandlerPoint(node);
             save_register_state.DefineSafepointWithLazyDeopt(
@@ -5909,7 +5912,7 @@ void ThrowReferenceErrorIfHole::GenerateCode(MaglevAssembler* masm,
       __ IsRootConstant(ValueInput(), RootIndex::kTheHoleValue),
       [](MaglevAssembler* masm, ThrowReferenceErrorIfHole* node) {
         __ Push(node->name().object());
-        __ Move(kContextRegister, masm->native_context().object());
+        __ LoadNativeContextInPinnedRegister();
         __ CallRuntime(Runtime::kThrowAccessedUninitializedVariable, 1);
         masm->DefineExceptionHandlerAndLazyDeoptPoint(node);
         __ Abort(AbortReason::kUnexpectedReturnFromThrow);
@@ -5931,7 +5934,7 @@ void ThrowSuperNotCalledIfHole::GenerateCode(MaglevAssembler* masm,
   __ JumpToDeferredIf(
       __ IsRootConstant(ValueInput(), RootIndex::kTheHoleValue),
       [](MaglevAssembler* masm, ThrowSuperNotCalledIfHole* node) {
-        __ Move(kContextRegister, masm->native_context().object());
+        __ LoadNativeContextInPinnedRegister();
         __ CallRuntime(Runtime::kThrowSuperNotCalled, 0);
         masm->DefineExceptionHandlerAndLazyDeoptPoint(node);
         __ Abort(AbortReason::kUnexpectedReturnFromThrow);
@@ -5954,7 +5957,7 @@ void ThrowSuperAlreadyCalledIfNotHole::GenerateCode(
       NegateCondition(
           __ IsRootConstant(ValueInput(), RootIndex::kTheHoleValue)),
       [](MaglevAssembler* masm, ThrowSuperAlreadyCalledIfNotHole* node) {
-        __ Move(kContextRegister, masm->native_context().object());
+        __ LoadNativeContextInPinnedRegister();
         __ CallRuntime(Runtime::kThrowSuperAlreadyCalledError, 0);
         masm->DefineExceptionHandlerAndLazyDeoptPoint(node);
         __ Abort(AbortReason::kUnexpectedReturnFromThrow);
@@ -5972,7 +5975,7 @@ void ThrowIfNotCallable::GenerateCode(MaglevAssembler* masm,
   Label* if_not_callable = __ MakeDeferredCode(
       [](MaglevAssembler* masm, ThrowIfNotCallable* node) {
         __ Push(node->ValueInput());
-        __ Move(kContextRegister, masm->native_context().object());
+        __ LoadNativeContextInPinnedRegister();
         __ CallRuntime(Runtime::kThrowCalledNonCallable, 1);
         masm->DefineExceptionHandlerAndLazyDeoptPoint(node);
         __ Abort(AbortReason::kUnexpectedReturnFromThrow);
@@ -6005,7 +6008,7 @@ void ThrowIfNotSuperConstructor::GenerateCode(MaglevAssembler* masm,
           [](MaglevAssembler* masm, ThrowIfNotSuperConstructor* node) {
             __ Push(ToRegister(node->ConstructorInput()),
                     ToRegister(node->FunctionInput()));
-            __ Move(kContextRegister, masm->native_context().object());
+            __ LoadNativeContextInPinnedRegister();
             __ CallRuntime(Runtime::kThrowNotSuperConstructor, 2);
             masm->DefineExceptionHandlerAndLazyDeoptPoint(node);
             __ Abort(AbortReason::kUnexpectedReturnFromThrow);
@@ -7062,7 +7065,7 @@ void GenerateTransitionElementsKind(
               } else {
                 SaveRegisterStateForCall save_state(masm, register_snapshot);
                 __ Push(object, transition_target.object());
-                __ Move(kContextRegister, masm->native_context().object());
+                __ LoadNativeContextInPinnedRegister();
                 __ CallRuntime(Runtime::kTransitionElementsKind);
                 save_state.DefineSafepoint();
               }
@@ -7504,7 +7507,7 @@ void AttemptOnStackReplacement(MaglevAssembler* masm,
       SaveRegisterStateForCall save_register_state(masm, snapshot);
       DCHECK(!node->unit()->is_inline());
       __ Push(Smi::FromInt(osr_offset.ToInt()));
-      __ Move(kContextRegister, masm->native_context().object());
+      __ LoadNativeContextInPinnedRegister();
       __ CallRuntime(Runtime::kCompileOptimizedOSRFromMaglev, 1);
       save_register_state.DefineSafepoint();
       __ Move(maybe_target_code, kReturnRegister0);
@@ -7551,7 +7554,8 @@ void TryOnStackReplacement::GenerateCode(MaglevAssembler* masm,
   Register scratch1 = temps.Acquire();
 
   const Register osr_state = scratch1;
-  __ Move(scratch0, unit_->feedback().object());
+  __ MoveTagged(scratch0, unit_->feedback().object());
+  __ DecompressTagged(scratch0, scratch0);
   __ AssertFeedbackVector(scratch0, scratch1);
   __ LoadByte(osr_state,
               FieldMemOperand(scratch0, FeedbackVector::kOsrStateOffset));
@@ -7939,7 +7943,7 @@ void HandleNoHeapWritesInterrupt::GenerateCode(MaglevAssembler* masm,
         {
           SaveRegisterStateForCall save_register_state(
               masm, node->register_snapshot());
-          __ Move(kContextRegister, masm->native_context().object());
+          __ LoadNativeContextInPinnedRegister();
           __ CallRuntime(Runtime::kHandleNoHeapWritesInterrupts, 0);
           save_register_state.DefineSafepointWithLazyDeopt(
               node->lazy_deopt_info());

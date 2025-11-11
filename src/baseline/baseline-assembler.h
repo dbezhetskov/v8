@@ -116,6 +116,9 @@ class BaselineAssembler {
   inline void MoveMaybeSmi(Register output, Register source);
   inline void MoveSmi(Register output, Register source);
 
+  inline void MoveTagged(Register output, Handle<HeapObject> value);
+  inline void DecompressTagged(Register output, Register source);
+
   // Push the given values, in the given order. If the stack needs alignment
   // (looking at you Arm64), the stack is padded from the front (i.e. before the
   // first value is pushed).

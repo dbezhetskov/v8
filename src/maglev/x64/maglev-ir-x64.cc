@@ -1101,7 +1101,7 @@ void HandleInterruptsAndTiering(MaglevAssembler* masm, ZoneLabelRef done,
     {
       SaveRegisterStateForCall save_register_state(masm,
                                                    node->register_snapshot());
-      __ Move(kContextRegister, masm->native_context().object());
+      __ LoadNativeContextInPinnedRegister();
       __ Push(MemOperand(rbp, StandardFrameConstants::kFunctionOffset));
       __ CallRuntime(Runtime::kBytecodeBudgetInterruptWithStackCheck_Maglev, 1);
       save_register_state.DefineSafepointWithLazyDeopt(node->lazy_deopt_info());
@@ -1115,7 +1115,7 @@ void HandleInterruptsAndTiering(MaglevAssembler* masm, ZoneLabelRef done,
   {
     SaveRegisterStateForCall save_register_state(masm,
                                                  node->register_snapshot());
-    __ Move(kContextRegister, masm->native_context().object());
+    __ LoadNativeContextInPinnedRegister();
     __ Push(MemOperand(rbp, StandardFrameConstants::kFunctionOffset));
     // Note: must not cause a lazy deopt!
     __ CallRuntime(Runtime::kBytecodeBudgetInterrupt_Maglev, 1);
