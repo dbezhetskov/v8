@@ -175,7 +175,7 @@ void MaglevAssembler::StringCharCodeOrCodePointAt(
           __ Push(string);
           __ SmiTag(index);
           __ Push(index);
-          __ Move(kContextRegister, masm->native_context().object());
+          __ LoadNativeContextInPinnedRegister();
           // This call does not throw nor can deopt.
           if (mode ==
               BuiltinStringPrototypeCharCodeOrCodePointAt::kCodePointAt) {
