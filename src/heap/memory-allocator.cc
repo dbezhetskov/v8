@@ -485,7 +485,18 @@ ReadOnlyPageMetadata* MemoryAllocator::AllocateReadOnlyPage(
       isolate_->heap(), space, chunk_info->size, chunk_info->area_start,
       chunk_info->area_end, std::move(chunk_info->reservation));
 
-  new (chunk_info->chunk) MemoryChunk(metadata->InitialFlags(), metadata);
+  if (isolate_->heap()->is_clone_heap_construction()) {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    // We don't need to construct memory chunk because we already have one
+    // in memory and it should be with the same data.
+    // There is way to avoid this change and just reset cloned sandbox after
+    // creation and reduce diff with upstream but it will be slower a bit.
+    MemoryChunk::UpdateMPT(reinterpret_cast<Address>(chunk_info->chunk),
+                           metadata);
+#endif
+  } else {
+    new (chunk_info->chunk) MemoryChunk(metadata->InitialFlags(), metadata);
+  }
 
 #ifdef V8_ENABLE_SANDBOX_HARDWARE_SUPPORT
   SandboxHardwareSupport::RegisterReadOnlyMemoryInsideSandbox(
