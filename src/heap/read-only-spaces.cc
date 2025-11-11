@@ -552,6 +552,21 @@ size_t ReadOnlyPageMetadata::ShrinkToHighWaterMark() {
   return unused;
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void ReadOnlyPageMetadata::ShrinkCloneToHighWaterMark() {
+  // It is the same as ShrinkToHighWaterMark
+  // but for clones we don't need to create filler object
+  // because they are already there.
+  Address top = ChunkAddress() + high_water_mark_;
+  DCHECK_LE(top, area_end());
+  size_t unused = RoundDown(static_cast<size_t>(area_end() - top),
+                            MemoryAllocator::GetCommitPageSize());
+  if (unused == 0) return;
+  heap()->memory_allocator()->PartialFreeMemory(
+      this, ChunkAddress() + size() - unused, unused, area_end() - unused);
+}
+#endif
+
 void ReadOnlySpace::ShrinkPages() {
   MemoryChunkMetadata::UpdateHighWaterMark(top_);
   heap()->CreateFillerObjectAt(top_, static_cast<int>(limit_ - top_));
@@ -622,6 +637,18 @@ void ReadOnlySpace::FinalizeSpaceForDeserialization(int sfi_id) {
   }
   heap()->isolate()->InitializeNextUniqueSfiId(sfi_id);
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void ReadOnlySpace::FinalizeSpaceAfterCloning() {
+  // The ReadOnlyRoots table is now initialized.
+  // Shrink pages, and update accounting stats.
+  for (ReadOnlyPageMetadata* page : pages_) {
+    page->ShrinkCloneToHighWaterMark();
+    accounting_stats_.IncreaseCapacity(page->area_size());
+    accounting_stats_.IncreaseAllocatedBytes(page->allocated_bytes(), page);
+  }
+}
+#endif
 
 }  // namespace internal
 }  // namespace v8

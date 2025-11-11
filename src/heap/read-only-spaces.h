@@ -41,6 +41,10 @@ class ReadOnlyPageMetadata : public MemoryChunkMetadata {
 
   size_t ShrinkToHighWaterMark();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void ShrinkCloneToHighWaterMark();
+#endif
+
   // Returns the address for a given offset in this page.
   Address OffsetToAddress(size_t offset) const {
     Address address_in_page = ChunkAddress() + offset;
@@ -242,6 +246,10 @@ class ReadOnlySpace : public BaseSpace {
                                         size_t area_size_in_bytes);
   void FinalizeSpaceForDeserialization(int sfi_id);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void FinalizeSpaceAfterCloning();
+#endif
+
   void EnsureSpaceForAllocation(int size_in_bytes);
   void FreeLinearAllocationArea();
 
@@ -249,6 +257,7 @@ class ReadOnlySpace : public BaseSpace {
       int mapped_prefix_in_bytes, int unmapped_payload_in_bytes);
 
   friend class Heap;
+  friend class ReadOnlyHeap;
   friend class ReadOnlyHeapImageDeserializer;
 };
 

@@ -311,6 +311,10 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
     return &external_strings_cage_;
   }
 #endif  // V8_ENABLE_MEMORY_CORRUPTION_API
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void SetupReadOnlyHeapClone(Isolate* isolate, Isolate* original);
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 #endif  // V8_ENABLE_SANDBOX
 
   JSDispatchTable* js_dispatch_table() { return &js_dispatch_table_; }
