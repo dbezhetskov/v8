@@ -537,6 +537,9 @@ class CodeSpace final : public PagedSpace {
   CodeSpace(Heap* heap, CodeSpace* original)
       : PagedSpace(heap, original, CODE_SPACE, EXECUTABLE,
                    FreeList::CreateFreeList(), CompactionSpaceKind::kNone) {}
+
+  void RebaseFullPointers(VirtualMemoryCage* original_cage,
+                          VirtualMemoryCage* new_cage);
 #endif
 };
 

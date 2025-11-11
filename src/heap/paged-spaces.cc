@@ -36,6 +36,11 @@
 #include "src/objects/string.h"
 #include "src/utils/utils.h"
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include "src/codegen/assembler-inl.h"
+#include "src/objects/objects-inl.h"
+#endif
+
 namespace v8 {
 namespace internal {
 
@@ -151,7 +156,39 @@ PagedSpaceBase::PagedSpaceBase(Heap* heap, PagedSpaceBase* original_space,
                                     cloned_cage));
   }
 }
-#endif
+
+void CodeSpace::RebaseFullPointers(VirtualMemoryCage* original_cage,
+                                   VirtualMemoryCage* new_cage) {
+  PtrComprCageBase cage_base = GetPtrComprCageBase();
+  PagedSpaceObjectIterator obj_it(heap_, this);
+  for (Tagged<HeapObject> obj = obj_it.Next(); !obj.is_null();
+       obj = obj_it.Next()) {
+    if (!IsInstructionStream(obj, cage_base)) continue;
+    Tagged<InstructionStream> istream = TrustedCast<InstructionStream>(obj);
+    Tagged<Code> code;
+    if (!istream->TryGetCode(&code, kAcquireLoad)) continue;
+
+    WritableJitAllocation jit_allocation = ThreadIsolation::LookupJitAllocation(
+        istream.address(), istream->Size(),
+        ThreadIsolation::JitAllocationType::kInstructionStream, true);
+    WritableRelocIterator reloc_it(
+        jit_allocation, code->instruction_stream(), code->constant_pool(),
+        RelocInfo::ModeMask(RelocInfo::FULL_EMBEDDED_OBJECT));
+    for (; !reloc_it.done(); reloc_it.next()) {
+      Tagged<HeapObject> original_target =
+          reloc_it.rinfo()->target_object(heap()->isolate());
+      if (original_cage->Contains(original_target->address())) {
+        Address rebased_address =
+            original_cage->Rebase(original_target->address(), new_cage);
+        reloc_it.rinfo()->set_target_object(
+            HeapObject::FromAddress(rebased_address),
+            ICacheFlushMode::SKIP_ICACHE_FLUSH);
+      }
+    }
+    code->FlushICache();
+  }
+}
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
 PageMetadata* PagedSpaceBase::InitializePage(
     MutablePageMetadata* mutable_page_metadata) {

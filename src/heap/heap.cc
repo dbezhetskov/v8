@@ -6562,7 +6562,20 @@ void Heap::SetUpClone(LocalHeap* main_thread_local_heap, Heap* target) {
   nodes_promoted_ = target->nodes_promoted_;
   last_gc_time_ = target->last_gc_time_;
 }
-#endif
+
+void Heap::RebaseAbsolutePointersToTrustedCage(
+    VirtualMemoryCage* original_trusted_cage) {
+  SafepointScope safepoint_scope(isolate(), SafepointKind::kIsolate);
+  DisallowGarbageCollection no_gc;
+  RwxMemoryWriteScope scope("For updating clone");
+
+  VirtualMemoryCage* cloned_trusted_cage_base =
+      isolate()->isolate_group()->GetTrustedPtrComprCage();
+  code_space_->RebaseFullPointers(original_trusted_cage,
+                                  cloned_trusted_cage_base);
+}
+
+#endif  // V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
 
 void Heap::InitializeHashSeed() {
   DCHECK(!deserialization_complete_);
