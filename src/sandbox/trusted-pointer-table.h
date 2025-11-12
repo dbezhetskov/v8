@@ -73,6 +73,10 @@ struct TrustedPointerTableEntry {
   // Test whether this entry is currently marked as alive.
   inline bool IsMarked() const;
 
+  template <typename TrustedMappingFunction>
+  void Remap(const TrustedPointerTableEntry& original,
+             TrustedMappingFunction mapping);
+
   static constexpr bool IsWriteProtected = false;
 
  private:
@@ -197,6 +201,11 @@ class V8_EXPORT_PRIVATE TrustedPointerTable
   // receive the handle and content of that entry.
   template <typename Callback>
   void IterateActiveEntriesIn(Space* space, Callback callback);
+
+  template <typename TrustedObjectMappingFunction>
+  void CloneSpaceFrom(TrustedPointerTable* original, Space* original_space,
+                      Space* destination_space,
+                      TrustedObjectMappingFunction trusted_mapping);
 
   // The base address of this table, for use in JIT compilers.
   Address base_address() const { return base(); }
