@@ -372,6 +372,42 @@ bool JSDispatchTable::IsCompatibleCode(Tagged<Code> code,
 }
 // LINT.ThenChange(/src/builtins/builtins-inl.h:IsCompatibleJSBuiltin)
 
+template <typename EntrypointMappingFunction,
+          typename CodeObjectMappingFunction>
+void JSDispatchTable::CloneSpaceFrom(
+    JSDispatchTable* original, Space* original_space, Space* destination_space,
+    EntrypointMappingFunction entrypoint_mapping,
+    CodeObjectMappingFunction code_mapping) {
+  CloneSegmentsData(original, original_space, destination_space);
+  original->IterateEntriesIn(
+      original_space,
+      [this, original, entrypoint_mapping, code_mapping](uint32_t index) {
+        const JSDispatchEntry& original_entry = original->at(index);
+        if (original_entry.IsFreelistEntry()) {
+          return;
+        }
+        at(index).Remap(original_entry, entrypoint_mapping, code_mapping);
+      });
+}
+
+template <typename EntrypointMappingFunction,
+          typename CodeObjectMappingFunction>
+void JSDispatchEntry::Remap(const JSDispatchEntry& original,
+                            EntrypointMappingFunction entrypoint_mapping,
+                            CodeObjectMappingFunction code_mapping) {
+  CFIMetadataWriteScope write_scope("JSDispatchTable write");
+  const Address original_entrypoint = original.GetEntrypoint();
+  const Address original_code_pointer = original.GetCodePointer();
+  DCHECK(Internals::HasHeapObjectTag(original_code_pointer));
+  const Address original_code_pointer_untagged =
+      original_code_pointer - kHeapObjectTag;
+  const Address remapped_code_pointer =
+      code_mapping(original_code_pointer_untagged);
+  const Address remapped_entrypoint = entrypoint_mapping(original_entrypoint);
+  MakeJSDispatchEntry(remapped_code_pointer, remapped_entrypoint,
+                      original.GetParameterCount(), original.IsMarked());
+}
+
 }  // namespace internal
 }  // namespace v8
 
