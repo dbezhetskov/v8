@@ -132,6 +132,28 @@ void SegmentedTable<Entry, size>::TearDown() {
   vas_ = nullptr;
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+template <typename Entry, size_t size>
+void SegmentedTable<Entry, size>::EnsureNewSegment(uint32_t offset) {
+  DCHECK(is_initialized());
+  base::MutexGuard guard(*segment_pool_grow_mutex_);
+  Address hint =
+      reinterpret_cast<Address>(reinterpret_cast<char*>(base()) + offset);
+
+  // Check segment pool first.
+  for (int i = 0; i < static_cast<int>(kSegmentPoolSize); ++i) {
+    if (offset == segment_pool_[i].load()) {
+      CHECK(segment_pool_[i].compare_exchange_strong(offset,
+                                                     kSegmentPoolFreeEntry));
+      return;
+    }
+  }
+  auto start = vas_->AllocatePages(hint, kSegmentSize, kSegmentSize,
+                                   PagePermissions::kReadWrite);
+  CHECK_EQ(start, hint);
+}
+#endif
+
 template <typename Entry, size_t size>
 typename SegmentedTable<Entry, size>::FreelistHead
 SegmentedTable<Entry, size>::InitializeFreeList(Segment segment,
