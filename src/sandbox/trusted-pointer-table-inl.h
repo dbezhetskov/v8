@@ -112,6 +112,16 @@ Address TrustedPointerTableEntry::GetPointerUnchecked() const {
   return payload_.load(std::memory_order_relaxed).ExtractPointerUnchecked();
 }
 
+template <typename TrustedMappingFunction>
+void TrustedPointerTableEntry::Remap(const TrustedPointerTableEntry& original,
+                                     TrustedMappingFunction mapping) {
+  const Payload original_payload = original.payload_.load();
+  const IndirectPointerTag tag = original_payload.ExtractTag();
+  const Address original_pointer = original.GetPointer(tag);
+  const Address remapped_pointer = mapping(original_pointer);
+  MakeTrustedPointerEntry(remapped_pointer, tag, original.IsMarked());
+}
+
 Address TrustedPointerTable::Get(TrustedPointerHandle handle,
                                  IndirectPointerTag tag) const {
   uint32_t index = HandleToIndex(handle);
@@ -206,6 +216,21 @@ void TrustedPointerTable::IterateActiveEntriesIn(Space* space,
       callback(IndexToHandle(index), pointer);
     }
   });
+}
+
+template <typename TrustedObjectMappingFunction>
+void TrustedPointerTable::CloneSpaceFrom(
+    TrustedPointerTable* original, Space* original_space,
+    Space* destination_space, TrustedObjectMappingFunction trusted_mapping) {
+  CloneSegmentsData(original, original_space, destination_space);
+  original->IterateEntriesIn(
+      original_space, [this, original, trusted_mapping](uint32_t index) {
+        const TrustedPointerTableEntry& original_entry = original->at(index);
+        if (original_entry.IsFreelistEntry()) {
+          return;
+        }
+        at(index).Remap(original_entry, trusted_mapping);
+      });
 }
 
 uint32_t TrustedPointerTable::HandleToIndex(TrustedPointerHandle handle) const {
