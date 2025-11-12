@@ -236,6 +236,11 @@ class V8_EXPORT_PRIVATE SegmentedTable {
   // Deallocates all memory associated with this table.
   void TearDown();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // Allocate new empty segment with the specified offset.
+  void EnsureNewSegment(uint32_t offset);
+#endif
+
   // The pointer to the base of the virtual address space backing this table.
   // All entry accesses happen through this pointer.
   // It is equivalent to |vas_->base()| and is effectively const after
