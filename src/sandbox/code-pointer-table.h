@@ -77,6 +77,12 @@ struct CodePointerTableEntry {
  private:
   friend class CodePointerTable;
 
+  template <typename EntrypointMappingFunction,
+            typename CodeObjectMappingFunction>
+  void Remap(const CodePointerTableEntry& original,
+             EntrypointMappingFunction entrypoint_mapping,
+             CodeObjectMappingFunction code_mapping);
+
   // Freelist entries contain the index of the next free entry in their lower 32
   // bits and are tagged with the kFreeCodePointerTableEntryTag.
   static constexpr Address kFreeEntryTag = kFreeCodePointerTableEntryTag;
@@ -182,6 +188,13 @@ class V8_EXPORT_PRIVATE CodePointerTable
   // receive the handle and content (Code object pointer) of that entry.
   template <typename Callback>
   void IterateActiveEntriesIn(Space* space, Callback callback);
+
+  template <typename EntrypointMappingFunction,
+            typename CodeObjectMappingFunction>
+  void CloneSpaceFrom(CodePointerTable* original, Space* original_space,
+                      Space* destination_space,
+                      EntrypointMappingFunction entrypoint_mapping,
+                      CodeObjectMappingFunction code_mapping);
 
   // The base address of this table, for use in JIT compilers.
   Address base_address() const { return base(); }
