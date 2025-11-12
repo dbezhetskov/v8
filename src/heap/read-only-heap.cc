@@ -159,6 +159,24 @@ void ReadOnlyHeap::SetUpClone(Isolate* clone_isolate,
     DCHECK_EQ(original_ro_space->accounting_stats_.Size(),
               cloned_ro_space->accounting_stats_.Size());
 #endif
+    cloned_group->code_pointer_table()->CloneSpaceFrom(
+        original_group->code_pointer_table(),
+        original_group->read_only_artifacts()
+            ->read_only_heap()
+            ->code_pointer_space(),
+        new_ro_artifacts->read_only_heap()->code_pointer_space(),
+        [original_code_cage =
+             original_group->GetCodeRange()](Address original_entrypoint) {
+          // For read only part of code pointer table all entrypoint are c++
+          // functions.
+          DCHECK(!original_code_cage->Contains(original_entrypoint));
+          return original_entrypoint;
+        },
+        [original_cage = original_group->GetPtrComprCage(),
+         cloned_cage =
+             cloned_group->GetPtrComprCage()](Address original_code_object) {
+          return original_cage->Rebase(original_code_object, cloned_cage);
+        });
   } else {
     ReadOnlyArtifacts* artifacts = cloned_group->read_only_artifacts();
     DCHECK_NOT_NULL(artifacts);
