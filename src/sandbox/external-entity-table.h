@@ -220,6 +220,11 @@ class V8_EXPORT_PRIVATE ExternalEntityTable
   template <typename Callback>
   void IterateEntriesIn(Space* space, Callback callback);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CloneSegmentsData(ExternalEntityTable<Entry, size>* original_table,
+                         Space* original_space, Space* target_space);
+#endif
+
   // Marker value for the freelist_head_ member to indicate that entry
   // allocation is currently forbidden, for example because the table is being
   // swept as part of a mark+sweep garbage collection. This value should never
