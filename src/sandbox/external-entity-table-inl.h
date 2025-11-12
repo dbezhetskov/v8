@@ -8,6 +8,10 @@
 #include "src/sandbox/external-entity-table.h"
 // Include the non-inl header before the rest of the headers.
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include <algorithm>
+#endif
+
 #include "src/base/atomicops.h"
 #include "src/base/emulated-virtual-address-subspace.h"
 #include "src/base/iterator.h"
@@ -419,6 +423,38 @@ void ExternalEntityTable<Entry, size>::IterateEntriesIn(Space* space,
     }
   }
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+template <typename Entry, size_t size>
+void ExternalEntityTable<Entry, size>::CloneSegmentsData(
+    ExternalEntityTable<Entry, size>* original_table, Space* original_space,
+    Space* target_space) {
+  DCHECK(target_space->BelongsTo(this));
+
+  using WriteScope =
+      std::conditional_t<Entry::IsWriteProtected, CFIMetadataWriteScope,
+                         NopRwxMemoryWriteScope>;
+  WriteScope write_scope("clone segment");
+
+  base::MutexGuard source_guard(&original_space->mutex_);
+  base::MutexGuard destination_guard(&target_space->mutex_);
+  for (auto original_segment : original_space->segments_) {
+    Address original_segment_address =
+        original_table->base() + original_segment.offset();
+    Address target_segment_address = this->base() + original_segment.offset();
+    this->EnsureNewSegment(original_segment.offset());
+    std::copy(reinterpret_cast<char*>(original_segment_address),
+              reinterpret_cast<char*>(original_segment_address + kSegmentSize),
+              reinterpret_cast<char*>(target_segment_address));
+    auto result_pair =
+        target_space->segments_.insert(Segment(original_segment.number()));
+    DCHECK(result_pair.second);  // Check that we inserted a new element.
+    DCHECK_EQ(result_pair.first->offset(), original_segment.offset());
+    USE(result_pair);
+  }
+  target_space->freelist_head_.store(original_space->freelist_head_.load());
+}
+#endif
 
 }  // namespace internal
 }  // namespace v8
