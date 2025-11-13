@@ -335,6 +335,10 @@ class V8_EXPORT_PRIVATE TracedHandles final {
 
   bool HasYoung() const;
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CopyStateFrom(TracedHandles* original);
+#endif
+
  private:
   V8_INLINE std::pair<TracedNodeBlock*, TracedNode*> AllocateNode();
   V8_NOINLINE V8_PRESERVE_MOST void RefillUsableNodeBlocks();
