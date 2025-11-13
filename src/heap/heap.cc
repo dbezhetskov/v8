@@ -2542,6 +2542,8 @@ void Heap::EnsureSweepingCompletedForObject(Tagged<HeapObject> object) {
   sweeper()->EnsurePageIsSwept(page);
 }
 
+void Heap::JoinConcurrentMarkingThreads() { concurrent_marking_->Join(); }
+
 Heap::LimitsComputationResult Heap::UpdateAllocationLimits(
     LimitsComputationBoundaries boundaries, const char* caller) {
   DCHECK(!using_initial_limit());

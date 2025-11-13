@@ -379,6 +379,13 @@ void IsolateGroup::SetReadOnlyPermissionForSandbox() {
       PageAllocator::kRead));
 }
 
+void IsolateGroup::ResetCloneToOriginalState() {
+  if (!sandbox()->address_space()->DiscardSystemPages(reservation_.base(),
+                                                      reservation_.size())) {
+    FATAL("Can't discard dirty pages for cloned isolate group");
+  }
+}
+
 void IsolateGroup::Release() {
   DCHECK_LT(0, reference_count_.load());
 
@@ -395,7 +402,7 @@ void IsolateGroup::Freeze() {
   }
 
   // Protect the original sandbox from modifications.
-  SetReadOnlyPermissionForSandbox();
+  // SetReadOnlyPermissionForSandbox();
 }
 
 namespace {

@@ -647,6 +647,15 @@ i::Address* GlobalizeReference(i::Isolate* i_isolate, i::Address value) {
   return result.location();
 }
 
+i::Address* FindCorrespondingGlobalHandle(i::Isolate* i_original,
+                                          i::Isolate* i_clone,
+                                          i::Address value) {
+  i::Address target_address =
+      i_original->isolate_group()->GetPtrComprCage()->Rebase(
+          value, i_clone->isolate_group()->GetPtrComprCage());
+  return i_clone->global_handles()->FindGlobalHandleLocation(target_address);
+}
+
 i::Address* CopyGlobalReference(i::Address* from) {
   i::IndirectHandle<i::Object> result = i::GlobalHandles::CopyGlobal(from);
   return result.location();
@@ -9635,6 +9644,14 @@ void v8::IsolateGroup::SetReadOnlyPermissionForSandbox() {
   isolate_group_->SetReadOnlyPermissionForSandbox();
 }
 
+char* v8::IsolateGroup::GetPointerCageBase() {
+  return reinterpret_cast<char*>(isolate_group_->GetPtrComprCageBase());
+}
+
+void v8::IsolateGroup::ResetClone() {
+  isolate_group_->ResetCloneToOriginalState();
+}
+
 HeapProfiler* Isolate::GetHeapProfiler() {
   i::HeapProfiler* heap_profiler =
       reinterpret_cast<i::Isolate*>(this)->heap()->heap_profiler();
@@ -9980,6 +9997,83 @@ void Isolate::Initialize(Isolate* v8_isolate,
 
   if (!i::V8::GetCurrentPlatform()
            ->GetForegroundTaskRunner(v8_isolate)
+           ->NonNestableTasksEnabled()) {
+    FATAL(
+        "The current platform's foreground task runner does not have "
+        "non-nestable tasks enabled. The embedder must provide one.");
+  }
+}
+
+// static
+void Isolate::InitializeClone(Isolate* clone_isolate,
+                              Isolate* v8_original_isolate,
+                              const v8::Isolate::CreateParams& params) {
+  i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(clone_isolate);
+  TRACE_EVENT_CALL_STATS_SCOPED(i_isolate, "v8", "V8.IsolateInitialize");
+  if (auto allocator = params.array_buffer_allocator_shared) {
+    CHECK(params.array_buffer_allocator == nullptr ||
+          params.array_buffer_allocator == allocator.get());
+    i_isolate->set_array_buffer_allocator(allocator.get());
+    i_isolate->set_array_buffer_allocator_shared(std::move(allocator));
+  } else {
+    CHECK_NOT_NULL(params.array_buffer_allocator);
+    i_isolate->set_array_buffer_allocator(params.array_buffer_allocator);
+  }
+
+  if (params.fatal_error_callback) {
+    clone_isolate->SetFatalErrorHandler(params.fatal_error_callback);
+  }
+
+#if __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  if (params.oom_error_callback) {
+    clone_isolate->SetOOMErrorHandler(params.oom_error_callback);
+  }
+#if __clang__
+#pragma clang diagnostic pop
+#endif
+
+  if (params.counter_lookup_callback) {
+    clone_isolate->SetCounterFunction(params.counter_lookup_callback);
+  }
+
+  if (params.create_histogram_callback) {
+    clone_isolate->SetCreateHistogramFunction(params.create_histogram_callback);
+  }
+
+  if (params.add_histogram_sample_callback) {
+    clone_isolate->SetAddHistogramSampleFunction(
+        params.add_histogram_sample_callback);
+  }
+
+  i_isolate->set_api_external_references(params.external_references);
+  i_isolate->set_allow_atomics_wait(params.allow_atomics_wait);
+
+  if (params.constraints.stack_limit() != nullptr) {
+    uintptr_t limit =
+        reinterpret_cast<uintptr_t>(params.constraints.stack_limit());
+    i_isolate->stack_guard()->SetStackLimit(limit);
+  }
+
+  // TODO(v8:2487): Once we got rid of Isolate::Current(), we can remove this.
+  Isolate::Scope isolate_scope(clone_isolate);
+
+  i_isolate->InitClone(reinterpret_cast<i::Isolate*>(v8_original_isolate));
+
+  {
+    // Set up code event handlers. Needs to be after i::Snapshot::Initialize
+    // because that is where we add the isolate to WasmEngine.
+    auto code_event_handler = params.code_event_handler;
+    if (code_event_handler) {
+      clone_isolate->SetJitCodeEventHandler(kJitCodeEventEnumExisting,
+                                            code_event_handler);
+    }
+  }
+
+  if (!i::V8::GetCurrentPlatform()
+           ->GetForegroundTaskRunner(clone_isolate)
            ->NonNestableTasksEnabled()) {
     FATAL(
         "The current platform's foreground task runner does not have "
