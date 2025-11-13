@@ -9662,6 +9662,11 @@ IsolateGroup& v8::IsolateGroup::operator=(IsolateGroup&& other) {
   return *this;
 }
 
+v8::IsolateGroup v8::IsolateGroup::Clone() {
+  i::IsolateGroup* internal_cloned_group = isolate_group_->Clone();
+  return IsolateGroup{std::move(internal_cloned_group)};
+}
+
 HeapProfiler* Isolate::GetHeapProfiler() {
   i::HeapProfiler* heap_profiler =
       reinterpret_cast<i::Isolate*>(this)->heap()->heap_profiler();
