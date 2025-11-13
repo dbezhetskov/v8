@@ -426,6 +426,17 @@ class VirtualMemoryCage {
 
   void Free();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  Address Rebase(Address ptr, const VirtualMemoryCage* to) const {
+    DCHECK(Contains(ptr));
+    Address rebased_ptr = to->base() + (ptr - base());
+    DCHECK(to->Contains(rebased_ptr));
+    return rebased_ptr;
+  }
+
+  bool Contains(Address address) const { return region().contains(address); }
+#endif
+
  protected:
   Address base_ = kNullAddress;
   size_t size_ = 0;

@@ -16,6 +16,10 @@
 #include "src/base/platform/mutex.h"
 #include "src/common/globals.h"
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include "src/utils/allocation.h"
+#endif
+
 namespace v8 {
 namespace internal {
 
@@ -216,6 +220,13 @@ class V8_EXPORT ThreadIsolation {
   static void CheckTrackedMemoryEmpty();
 #endif
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  static void CloneJitAllocationsForPage(
+      Address original_page_address,
+      const VirtualMemoryCage* original_code_cage, Address cloned_page_address,
+      const VirtualMemoryCage* cloned_code_cage, size_t page_size);
+#endif
+
   // A std::allocator implementation that wraps the ThreadIsolated allocator.
   // This is needed to create STL containers backed by ThreadIsolated memory.
   template <class T>
@@ -303,6 +314,12 @@ class V8_EXPORT ThreadIsolation {
    public:
     explicit JitPage(size_t size) : size_(size) {}
     ~JitPage();
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    void CloneAllocationsFrom(JitPage* original,
+                              const VirtualMemoryCage* original_code_cage,
+                              const VirtualMemoryCage* cloned_code_cage);
+#endif
 
    private:
     base::Mutex mutex_;

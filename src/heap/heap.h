@@ -731,6 +731,15 @@ class Heap final {
   // Sets up the heap memory without creating any objects.
   void SetUpSpaces();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // Prepares the heap, setting up for cloning.
+  void SetUpClone(LocalHeap* main_thread_local_heap, Heap* target);
+
+  // Sets up the heap memory without creating any objects
+  // as an clone of the original heap.
+  void SetUpSpacesClone(Heap* original);
+#endif
+
   // Prepares the heap, setting up for deserialization.
   void InitializeMainThreadLocalHeap(LocalHeap* main_thread_local_heap);
 
@@ -1720,6 +1729,13 @@ class Heap final {
 
   bool IsNewSpaceAllowedToGrowAboveTargetCapacity() const;
 
+  bool is_clone_heap_construction() const {
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    return is_clone_heap_construction_;
+#endif
+    return false;
+  }
+
  private:
   class AllocationTrackerForDebugging;
 
@@ -1736,6 +1752,10 @@ class Heap final {
     explicit ExternalStringTable(Heap* heap) : heap_(heap) {}
     ExternalStringTable(const ExternalStringTable&) = delete;
     ExternalStringTable& operator=(const ExternalStringTable&) = delete;
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    void CopyDataFrom(ExternalStringTable* original, Heap* original_heap);
+#endif
 
     // Registers an external string.
     inline void AddString(Tagged<String> string);
@@ -2541,6 +2561,12 @@ class Heap final {
   // In such cases we may want to update the limits again once loading is
   // actually finished.
   bool update_allocation_limits_after_loading_ = false;
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  // True if we are in a process of constructing a cloned heap.
+  // It is needed to not to spoil memory cloned from the original heap.
+  bool is_clone_heap_construction_ = false;
+#endif
 
   // On-stack address used for selective consevative stack scanning. No value
   // means that selective conservative stack scanning is not enabled.

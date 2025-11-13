@@ -144,6 +144,10 @@ class SemiSpace final : public Space {
  private:
   bool AllocateFreshPage();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  bool AllocateFreshPageAt(Address address);
+#endif
+
   void RewindPages(int num_pages);
 
   // Iterates all pages and properly initializes page flags for this space.
@@ -189,6 +193,10 @@ class NewSpace : NON_EXPORTED_BASE(public SpaceWithLinearArea) {
   using const_iterator = ConstPageIterator;
 
   explicit NewSpace(Heap* heap);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  NewSpace(Heap* heap, NewSpace* original);
+#endif
 
   base::Mutex* mutex() { return &mutex_; }
 
@@ -263,6 +271,10 @@ class V8_EXPORT_PRIVATE SemiSpaceNewSpace final : public NewSpace {
   SemiSpaceNewSpace(Heap* heap, size_t initial_semispace_capacity,
                     size_t min_semispace_capacity_,
                     size_t max_semispace_capacity);
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  SemiSpaceNewSpace(Heap* heap, SemiSpaceNewSpace* original_space);
+#endif
 
   ~SemiSpaceNewSpace() final = default;
 
@@ -356,6 +368,11 @@ class V8_EXPORT_PRIVATE SemiSpaceNewSpace final : public NewSpace {
   // are no pages, or the current page is already empty), or true
   // if successful.
   bool AddFreshPage();
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  bool AddToSpacePageAt(Address address);
+  bool AddFromSpacePageAt(Address address);
+#endif
 
   bool AddParkedAllocationBuffer(int size_in_bytes,
                                  AllocationAlignment alignment);

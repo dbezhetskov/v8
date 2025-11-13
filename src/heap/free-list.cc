@@ -95,7 +95,12 @@ void FreeListCategory::Free(const Heap* heap,
   Tagged<FreeSpace> free_space =
       Cast<FreeSpace>(HeapObject::FromAddress(writable_free_space.Address()));
   DCHECK_EQ(free_space->Size(), writable_free_space.Size());
-  free_space->SetNext(heap, writable_free_space, top());
+  if (PageMetadata::FromAddress(writable_free_space.Address())->heap() &&
+      !PageMetadata::FromAddress(writable_free_space.Address())
+           ->heap()
+           ->is_clone_heap_construction()) {
+    free_space->SetNext(heap, writable_free_space, top());
+  }
   set_top(free_space);
   size_t size_in_bytes = writable_free_space.Size();
   available_ += size_in_bytes;

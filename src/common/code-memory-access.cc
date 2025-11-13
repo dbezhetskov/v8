@@ -287,6 +287,18 @@ ThreadIsolation::JitPage::~JitPage() {
   // TODO(sroettger): check that the page is not in use (scan shadow stacks).
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void ThreadIsolation::JitPage::CloneAllocationsFrom(
+    JitPage* original, const VirtualMemoryCage* original_code_cage,
+    const VirtualMemoryCage* cloned_code_cage) {
+  for (const auto& [original_alloc_start, alloc] : original->allocations_) {
+    Address cloned_alloc_start =
+        original_code_cage->Rebase(original_alloc_start, cloned_code_cage);
+    allocations_.emplace(cloned_alloc_start, alloc);
+  }
+}
+#endif
+
 size_t ThreadIsolation::JitPageReference::Size() const {
   return jit_page_->size_;
 }
@@ -538,6 +550,21 @@ void ThreadIsolation::UnregisterJitAllocationForTesting(Address addr,
                                                         size_t size) {
   LookupJitPage(addr, size).UnregisterAllocation(addr);
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+// static
+void ThreadIsolation::CloneJitAllocationsForPage(
+    Address original_page_address, const VirtualMemoryCage* original_code_cage,
+    Address cloned_page_address, const VirtualMemoryCage* cloned_code_cage,
+    size_t page_size) {
+  CFIMetadataWriteScope write_scope("Clone jit allocations for page");
+
+  auto original_jit_page = LookupJitPage(original_page_address, page_size);
+  auto cloned_jit_page = LookupJitPage(cloned_page_address, page_size);
+  cloned_jit_page.JitPage()->CloneAllocationsFrom(
+      original_jit_page.JitPage(), original_code_cage, cloned_code_cage);
+}
+#endif
 
 // static
 void ThreadIsolation::UnregisterWasmAllocation(Address addr, size_t size) {

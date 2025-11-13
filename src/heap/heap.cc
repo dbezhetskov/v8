@@ -2822,6 +2822,36 @@ void Heap::Scavenge() {
   SetGCState(NOT_IN_GC);
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void Heap::ExternalStringTable::CopyDataFrom(ExternalStringTable* original,
+                                             Heap* original_heap) {
+  base::MutexGuard original_guard(original->mutex_);
+  base::MutexGuard current_guard(mutex_);
+
+  VirtualMemoryCage* original_cage =
+      original_heap->isolate()->isolate_group()->GetPtrComprCage();
+  VirtualMemoryCage* current_cage =
+      heap_->isolate()->isolate_group()->GetPtrComprCage();
+  auto rebase = [original_cage, current_cage](Address address) {
+    return original_cage->Rebase(address, current_cage);
+  };
+
+  for (TaggedBase& str : original->young_strings_) {
+    Address str_address = str.ptr();
+    DCHECK(original_cage->region().contains(str_address));
+    young_strings_.push_back(
+        HeapObject::FromAddress(rebase(str_address) - kHeapObjectTag));
+  }
+
+  for (TaggedBase& str : original->old_strings_) {
+    Address str_address = str.ptr();
+    DCHECK(original_cage->region().contains(str_address));
+    old_strings_.push_back(
+        HeapObject::FromAddress(rebase(str_address) - kHeapObjectTag));
+  }
+}
+#endif
+
 bool Heap::ExternalStringTable::Contains(Tagged<String> string) {
   for (size_t i = 0; i < young_strings_.size(); ++i) {
     if (young_strings_[i] == string) return true;
@@ -6351,6 +6381,246 @@ void Heap::SetUpSpaces() {
     mb_.reset(new MemoryBalancer(this, startup_time));
   }
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void Heap::SetUpSpacesClone(Heap* original) {
+  // Ensure SetUpFromReadOnlySpace has been ran.
+  DCHECK_NOT_NULL(read_only_space_);
+
+  if (v8_flags.sticky_mark_bits) {
+    DCHECK(false);  // NYI.
+  } else {
+    space_[OLD_SPACE] = std::make_unique<OldSpace>(this, original->old_space());
+    old_space_ = static_cast<OldSpace*>(space_[OLD_SPACE].get());
+  }
+
+  if (!v8_flags.single_generation) {
+    if (!v8_flags.sticky_mark_bits) {
+      if (v8_flags.minor_ms) {
+        DCHECK(false);  // NYI.
+      } else {
+        space_[NEW_SPACE] = std::make_unique<SemiSpaceNewSpace>(
+            this, original->semi_space_new_space());
+      }
+      new_space_ = static_cast<NewSpace*>(space_[NEW_SPACE].get());
+    }
+
+    space_[NEW_LO_SPACE] = std::make_unique<NewLargeObjectSpace>(
+        this, original->new_lo_space(), NewSpaceCapacity());
+    new_lo_space_ =
+        static_cast<NewLargeObjectSpace*>(space_[NEW_LO_SPACE].get());
+  }
+
+  space_[CODE_SPACE] =
+      std::make_unique<CodeSpace>(this, original->code_space());
+  code_space_ = static_cast<CodeSpace*>(space_[CODE_SPACE].get());
+
+  space_[LO_SPACE] =
+      std::make_unique<OldLargeObjectSpace>(this, original->lo_space());
+  lo_space_ = static_cast<OldLargeObjectSpace*>(space_[LO_SPACE].get());
+
+  space_[CODE_LO_SPACE] =
+      std::make_unique<CodeLargeObjectSpace>(this, original->code_lo_space());
+  code_lo_space_ =
+      static_cast<CodeLargeObjectSpace*>(space_[CODE_LO_SPACE].get());
+
+  space_[TRUSTED_SPACE] =
+      std::make_unique<TrustedSpace>(this, original->trusted_space());
+  trusted_space_ = static_cast<TrustedSpace*>(space_[TRUSTED_SPACE].get());
+
+  space_[TRUSTED_LO_SPACE] = std::make_unique<TrustedLargeObjectSpace>(
+      this, original->trusted_lo_space());
+  trusted_lo_space_ =
+      static_cast<TrustedLargeObjectSpace*>(space_[TRUSTED_LO_SPACE].get());
+
+  if (isolate()->is_shared_space_isolate()) {
+    DCHECK(!v8_flags.sticky_mark_bits);
+    DCHECK(false);  // NYI.
+  }
+
+  if (isolate()->has_shared_space()) {
+    DCHECK(false);  // NYI.
+  }
+
+  main_thread_local_heap()->SetUpMainThreadClone(
+      original->main_thread_local_heap());
+
+  base::TimeTicks startup_time = base::TimeTicks::Now();
+
+  tracer_.reset(new GCTracer(this, startup_time));
+  array_buffer_sweeper_.reset(new ArrayBufferSweeper(this));
+  memory_measurement_.reset(new MemoryMeasurement(isolate()));
+  if (v8_flags.memory_reducer) memory_reducer_.reset(new MemoryReducer(this));
+  if (V8_UNLIKELY(TracingFlags::is_gc_stats_enabled())) {
+    live_object_stats_.reset(new ObjectStats(this));
+    dead_object_stats_.reset(new ObjectStats(this));
+  }
+  if (Heap::AllocationTrackerForDebugging::IsNeeded()) {
+    allocation_tracker_for_debugging_ =
+        std::make_unique<Heap::AllocationTrackerForDebugging>(this);
+  }
+
+  LOG(isolate_, IntPtrTEvent("heap-capacity", Capacity()));
+  LOG(isolate_, IntPtrTEvent("heap-available", Available()));
+
+  SetGetExternallyAllocatedMemoryInBytesCallback(ReturnNull);
+
+  if (v8_flags.stress_marking > 0) {
+    stress_marking_percentage_ = NextStressMarkingLimit();
+  }
+  if (IsStressingScavenge()) {
+    stress_scavenge_observer_ = new StressScavengeObserver(this);
+    allocator()->new_space_allocator()->AddAllocationObserver(
+        stress_scavenge_observer_);
+  }
+
+  if (v8_flags.memory_balancer) {
+    mb_.reset(new MemoryBalancer(this, startup_time));
+  }
+
+  // It is not longer a clone it is a fully instantiated heap.
+  is_clone_heap_construction_ = false;
+}
+
+void Heap::SetUpClone(LocalHeap* main_thread_local_heap, Heap* target) {
+  DCHECK_NULL(main_thread_local_heap_);
+  DCHECK_NULL(heap_allocator_);
+  main_thread_local_heap_ = main_thread_local_heap;
+  heap_allocator_ = &main_thread_local_heap->heap_allocator_;
+  DCHECK_NOT_NULL(heap_allocator_);
+  is_clone_heap_construction_ = true;
+
+  // Set the stack start for the main thread that sets up the heap.
+  SetStackStart();
+
+#ifdef V8_ENABLE_ALLOCATION_TIMEOUT
+  heap_allocator_->UpdateAllocationTimeout();
+#endif  // V8_ENABLE_ALLOCATION_TIMEOUT
+
+  // Initialize heap spaces and initial maps and objects.
+  //
+  // If the heap is not yet configured (e.g. through the API), configure it.
+  // Configuration is based on the flags new-space-size (really the semispace
+  // size) and old-space-size if set or the initial values of semispace_size_
+  // and old_generation_size_ otherwise.
+  if (!configured_) ConfigureHeapDefault();
+
+  v8::PageAllocator* code_page_allocator;
+  if (isolate_->RequiresCodeRange() || code_range_size_ != 0) {
+    const size_t requested_size =
+        code_range_size_ == 0 ? kMaximalCodeRangeSize : code_range_size_;
+    // When a target requires the code range feature, we put all code objects in
+    // a contiguous range of virtual address space, so that they can call each
+    // other with near calls.
+#ifdef V8_COMPRESS_POINTERS
+    // When pointer compression is enabled, isolates in the same group share the
+    // same CodeRange, owned by the IsolateGroup.
+    code_range_ = isolate_->isolate_group()->EnsureCodeRange(
+        requested_size, target->isolate()->isolate_group()->GetCodeRange());
+#else
+    // Otherwise, each isolate has its own CodeRange, owned by the heap.
+    code_range_ = std::make_unique<CodeRange>();
+    if (!code_range_->InitReservation(isolate_->page_allocator(),
+                                      requested_size, false)) {
+      V8::FatalProcessOutOfMemory(
+          isolate_, "Failed to reserve virtual memory for CodeRange");
+    }
+#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+
+    LOG(isolate_,
+        NewEvent("CodeRange",
+                 reinterpret_cast<void*>(code_range_->reservation()->address()),
+                 code_range_size_));
+
+    isolate_->AddCodeRange(code_range_->reservation()->region().begin(),
+                           code_range_->reservation()->region().size());
+    code_page_allocator = code_range_->page_allocator();
+  } else {
+    code_page_allocator = isolate_->page_allocator();
+  }
+
+  v8::PageAllocator* trusted_page_allocator;
+#ifdef V8_ENABLE_SANDBOX
+  trusted_page_allocator =
+      isolate_->isolate_group()->GetTrustedPtrComprCage()->page_allocator();
+#else
+  trusted_page_allocator = isolate_->page_allocator();
+#endif
+
+  task_runner_ = V8::GetCurrentPlatform()->GetForegroundTaskRunner(
+      reinterpret_cast<v8::Isolate*>(isolate()));
+
+  collection_barrier_.reset(new CollectionBarrier(this, this->task_runner_));
+
+  // Set up memory allocator.
+  memory_allocator_.reset(new MemoryAllocator(
+      isolate_, code_page_allocator, trusted_page_allocator,
+      isolate_->isolate_group()->memory_pool(), MaxReserved()));
+
+  sweeper_.reset(new Sweeper(this));
+
+  mark_compact_collector_.reset(new MarkCompactCollector(this));
+
+  scavenger_collector_.reset(new ScavengerCollector(this));
+  minor_mark_sweep_collector_.reset(new MinorMarkSweepCollector(this));
+  ephemeron_remembered_set_.reset(new EphemeronRememberedSet());
+
+  incremental_marking_.reset(
+      new IncrementalMarking(this, mark_compact_collector_->weak_objects()));
+
+  if (v8_flags.concurrent_marking || v8_flags.parallel_marking) {
+    concurrent_marking_.reset(
+        new ConcurrentMarking(this, mark_compact_collector_->weak_objects()));
+  } else {
+    concurrent_marking_.reset(new ConcurrentMarking(this, nullptr));
+  }
+
+  // Set up layout tracing callback.
+  if (V8_UNLIKELY(v8_flags.trace_gc_heap_layout)) {
+    v8::GCType gc_type = kGCTypeMarkSweepCompact;
+    if (V8_UNLIKELY(!v8_flags.trace_gc_heap_layout_ignore_minor_gc)) {
+      gc_type = static_cast<v8::GCType>(gc_type | kGCTypeScavenge |
+                                        kGCTypeMinorMarkSweep);
+    }
+    AddGCPrologueCallback(HeapLayoutTracer::GCProloguePrintHeapLayout, gc_type,
+                          nullptr);
+    AddGCEpilogueCallback(HeapLayoutTracer::GCEpiloguePrintHeapLayout, gc_type,
+                          nullptr);
+  }
+
+  old_generation_allocation_limit_.store(
+      target->old_generation_allocation_limit_.load());
+  global_allocation_limit_.store(target->global_allocation_limit_.load());
+  contexts_disposed_ = target->contexts_disposed_;
+  maximum_committed_ = target->maximum_committed_;
+
+  VirtualMemoryCage* original_cage =
+      target->isolate()->isolate_group()->GetPtrComprCage();
+  VirtualMemoryCage* cloned_cage =
+      isolate()->isolate_group()->GetPtrComprCage();
+  Address original_native_ctx = target->native_contexts_list_.load();
+  Address cloned_native_ctx =
+      original_cage->Rebase(original_native_ctx, cloned_cage);
+  native_contexts_list_.store(cloned_native_ctx);
+
+  backing_store_bytes_.store(target->backing_store_bytes_.load());
+  ms_count_ = target->ms_count_;
+  gc_count_ = target->gc_count_;
+  external_string_table_.CopyDataFrom(&target->external_string_table_, target);
+
+  promoted_objects_size_ = target->promoted_objects_size_;
+  promotion_ratio_ = target->promotion_ratio_;
+  promotion_rate_ = target->promotion_rate_;
+  new_space_surviving_object_size_ = target->new_space_surviving_object_size_;
+  previous_new_space_surviving_object_size_ =
+      target->previous_new_space_surviving_object_size_;
+  new_space_surviving_rate_ = target->new_space_surviving_rate_;
+  nodes_died_in_new_space_ = target->nodes_died_in_new_space_;
+  nodes_copied_in_new_space_ = target->nodes_copied_in_new_space_;
+  nodes_promoted_ = target->nodes_promoted_;
+  last_gc_time_ = target->last_gc_time_;
+}
+#endif
 
 void Heap::InitializeHashSeed() {
   DCHECK(!deserialization_complete_);
