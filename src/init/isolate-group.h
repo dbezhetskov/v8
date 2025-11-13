@@ -209,6 +209,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   static void InitializeOncePerProcess();
   static void TearDownOncePerProcess();
 
+  IsolateGroup* Clone();
+
   // Obtain a fresh reference on the isolate group.
   IsolateGroup* Acquire() {
     DCHECK_LT(0, reference_count_.load());
