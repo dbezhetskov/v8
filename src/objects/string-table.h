@@ -56,6 +56,10 @@ class V8_EXPORT_PRIVATE StringTable {
   explicit StringTable(Isolate* isolate);
   ~StringTable();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  std::unique_ptr<StringTable> Clone(Isolate* isolate);
+#endif
+
   int Capacity() const;
   int NumberOfElements() const;
 
