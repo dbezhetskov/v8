@@ -2822,6 +2822,36 @@ void Heap::Scavenge() {
   SetGCState(NOT_IN_GC);
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void Heap::ExternalStringTable::CopyDataFrom(ExternalStringTable* original,
+                                             Heap* original_heap) {
+  base::MutexGuard original_guard(original->mutex_);
+  base::MutexGuard current_guard(mutex_);
+
+  VirtualMemoryCage* original_cage =
+      original_heap->isolate()->isolate_group()->GetPtrComprCage();
+  VirtualMemoryCage* current_cage =
+      heap_->isolate()->isolate_group()->GetPtrComprCage();
+  auto rebase = [original_cage, current_cage](Address address) {
+    return original_cage->Rebase(address, current_cage);
+  };
+
+  for (TaggedBase& str : original->young_strings_) {
+    Address str_address = str.ptr();
+    DCHECK(original_cage->region().contains(str_address));
+    young_strings_.push_back(
+        HeapObject::FromAddress(rebase(str_address) - kHeapObjectTag));
+  }
+
+  for (TaggedBase& str : original->old_strings_) {
+    Address str_address = str.ptr();
+    DCHECK(original_cage->region().contains(str_address));
+    old_strings_.push_back(
+        HeapObject::FromAddress(rebase(str_address) - kHeapObjectTag));
+  }
+}
+#endif
+
 bool Heap::ExternalStringTable::Contains(Tagged<String> string) {
   for (size_t i = 0; i < young_strings_.size(); ++i) {
     if (young_strings_[i] == string) return true;
@@ -6576,6 +6606,7 @@ void Heap::SetUpClone(LocalHeap* main_thread_local_heap, Heap* target) {
   backing_store_bytes_.store(target->backing_store_bytes_.load());
   ms_count_ = target->ms_count_;
   gc_count_ = target->gc_count_;
+  external_string_table_.CopyDataFrom(&target->external_string_table_, target);
 
   promoted_objects_size_ = target->promoted_objects_size_;
   promotion_ratio_ = target->promotion_ratio_;
