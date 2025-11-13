@@ -22,6 +22,11 @@
 #include "src/utils/memcopy.h"
 #include "src/utils/utils.h"
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+#include <algorithm>
+#include <iterator>
+#endif
+
 #ifdef V8_ENABLE_PARTITION_ALLOC
 #include <partition_alloc/partition_alloc.h>
 #endif
@@ -286,6 +291,75 @@ void IsolateGroup::InitializeOncePerProcess() {
 
 // static
 void IsolateGroup::TearDownOncePerProcess() { ReleaseDefault(); }
+
+IsolateGroup* IsolateGroup::Clone() {
+#ifndef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  FATAL(
+      "Cloning isolate groups requires enabling "
+      "multiple pointer compression cages at build-time");
+#else
+  IsolateGroup* previous_group = IsolateGroup::current();
+  IsolateGroup* clonned_group = new IsolateGroup;
+  IsolateGroup::set_current(clonned_group);
+
+  Sandbox* previous_sandbox = Sandbox::current();
+  Sandbox* clonned_sandbox = sandbox()->Clone(GetPlatformVirtualAddressSpace());
+  if (!clonned_sandbox) {
+    return nullptr;
+  }
+  Sandbox::set_current(clonned_sandbox);
+
+  PtrComprCageReservationParams params;
+  Address base = clonned_sandbox->address_space()->AllocatePages(
+      clonned_sandbox->base(), params.reservation_size, params.base_alignment,
+      PagePermissions::kNoAccess);
+  CHECK_EQ(clonned_sandbox->base(), base);
+  base::AddressRegion existing_reservation(base, params.reservation_size);
+  params.page_allocator = clonned_sandbox->page_allocator();
+
+  if (!clonned_group->reservation_.InitReservation(params,
+                                                   existing_reservation)) {
+    V8::FatalProcessOutOfMemory(
+        nullptr,
+        "Failed to reserve virtual memory for process-wide V8 "
+        "pointer compression cage");
+  }
+
+  clonned_group->page_allocator_ = clonned_group->reservation_.page_allocator();
+  clonned_group->pointer_compression_cage_ = &clonned_group->reservation_;
+  DCHECK(trusted_range_.backing_store_.has_value());
+  if (!clonned_group->trusted_range_.InitReservation(kMaximalTrustedRangeSize,
+                                                     &trusted_range_)) {
+    V8::FatalProcessOutOfMemory(
+        nullptr, "Failed to reserve virtual memory for TrustedRange");
+  }
+  clonned_group->trusted_pointer_compression_cage_ =
+      &clonned_group->trusted_range_;
+  clonned_group->sandbox_ = clonned_sandbox;
+
+  // Initialize clonned group.
+  {
+    clonned_group->process_wide_ = false;
+
+    clonned_group->code_pointer_table()->Initialize();
+    clonned_group->optimizing_compile_task_executor_ =
+        std::make_unique<OptimizingCompileTaskExecutor>();
+    clonned_group->memory_pool_ = std::make_unique<MemoryPool>();
+
+    clonned_group->js_dispatch_table()->Initialize();
+    ExternalReferenceTable::InitializeOncePerIsolateGroup(
+        clonned_group->external_ref_table());
+  }
+
+  V8HeapCompressionScheme::InitBase(clonned_group->GetPtrComprCageBase());
+  ExternalCodeCompressionScheme::InitBase(V8HeapCompressionScheme::base());
+
+  Sandbox::set_current(previous_sandbox);
+  IsolateGroup::set_current(previous_group);
+
+  return clonned_group;
+#endif
+}
 
 void IsolateGroup::Release() {
   DCHECK_LT(0, reference_count_.load());
