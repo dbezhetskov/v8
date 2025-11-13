@@ -10029,6 +10029,88 @@ Isolate* Isolate::New(const Isolate::CreateParams& params) {
   return Isolate::New(IsolateGroup::GetDefault(), params);
 }
 
+Isolate* Isolate::MaterializeClone(Isolate* original,
+                                   const IsolateGroup& cloned_group) {
+  Isolate* cloned_isolate = Allocate(cloned_group);
+  Isolate::CreateParams params;
+  params.array_buffer_allocator =
+      ArrayBuffer::Allocator::NewDefaultAllocator(cloned_group);
+
+  i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(cloned_isolate);
+  TRACE_EVENT_CALL_STATS_SCOPED(i_isolate, "v8", "V8.IsolateInitialize");
+  if (auto allocator = params.array_buffer_allocator_shared) {
+    CHECK(params.array_buffer_allocator == nullptr ||
+          params.array_buffer_allocator == allocator.get());
+    i_isolate->set_array_buffer_allocator(allocator.get());
+    i_isolate->set_array_buffer_allocator_shared(std::move(allocator));
+  } else {
+    CHECK_NOT_NULL(params.array_buffer_allocator);
+    i_isolate->set_array_buffer_allocator(params.array_buffer_allocator);
+  }
+
+  if (params.fatal_error_callback) {
+    cloned_isolate->SetFatalErrorHandler(params.fatal_error_callback);
+  }
+
+#if __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  if (params.oom_error_callback) {
+    cloned_isolate->SetOOMErrorHandler(params.oom_error_callback);
+  }
+#if __clang__
+#pragma clang diagnostic pop
+#endif
+
+  if (params.counter_lookup_callback) {
+    cloned_isolate->SetCounterFunction(params.counter_lookup_callback);
+  }
+
+  if (params.create_histogram_callback) {
+    cloned_isolate->SetCreateHistogramFunction(
+        params.create_histogram_callback);
+  }
+
+  if (params.add_histogram_sample_callback) {
+    cloned_isolate->SetAddHistogramSampleFunction(
+        params.add_histogram_sample_callback);
+  }
+
+  i_isolate->set_api_external_references(params.external_references);
+  i_isolate->set_allow_atomics_wait(params.allow_atomics_wait);
+
+  if (params.constraints.stack_limit() != nullptr) {
+    uintptr_t limit =
+        reinterpret_cast<uintptr_t>(params.constraints.stack_limit());
+    i_isolate->stack_guard()->SetStackLimit(limit);
+  }
+
+  // TODO(v8:2487): Once we got rid of Isolate::Current(), we can remove this.
+  Isolate::Scope isolate_scope(cloned_isolate);
+
+  i_isolate->InitClone(reinterpret_cast<i::Isolate*>(original));
+
+  {
+    // Set up code event handlers. Needs to be after i::Snapshot::Initialize
+    // because that is where we add the isolate to WasmEngine.
+    auto code_event_handler = params.code_event_handler;
+    if (code_event_handler) {
+      cloned_isolate->SetJitCodeEventHandler(kJitCodeEventEnumExisting,
+                                             code_event_handler);
+    }
+  }
+
+  if (!i::V8::GetCurrentPlatform()
+           ->GetForegroundTaskRunner(cloned_isolate)
+           ->NonNestableTasksEnabled()) {
+    FATAL(
+        "The current platform's foreground task runner does not have "
+        "non-nestable tasks enabled. The embedder must provide one.");
+  }
+  return cloned_isolate;
+}
+
 Isolate* Isolate::New(const IsolateGroup& group,
                       const Isolate::CreateParams& params) {
   Isolate* v8_isolate = Allocate(group);
