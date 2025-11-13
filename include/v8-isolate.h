@@ -1878,6 +1878,23 @@ class V8_EXPORT Isolate {
    */
   uint64_t GetHashSeed();
 
+  /**
+   * Materialize an already in-memory–cloned isolate.
+   *
+   * After cloning an isolate group, the heap memory of all isolates in the
+   * original group is cloned as well. However, to use a cloned isolate, you
+   * must first materialize it.
+   *
+   * Materialization constructs all metadata and the isolate’s internal
+   * structures without re-allocating/writing its memory.
+   *
+   * Supported only in a multi-sandbox configuration with pointer compression
+   * enabled.
+   *
+   */
+  static Isolate* MaterializeClone(Isolate* original,
+                                   const IsolateGroup& cloned_group);
+
   Isolate() = delete;
   ~Isolate() = delete;
   Isolate(const Isolate&) = delete;
