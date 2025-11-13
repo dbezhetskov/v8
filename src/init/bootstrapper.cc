@@ -142,6 +142,30 @@ Bootstrapper::Bootstrapper(Isolate* isolate)
       nesting_(0),
       extensions_cache_(Script::Type::kExtension) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void Bootstrapper::CloneDataFrom(Bootstrapper* original) {
+  nesting_ = original->nesting_;
+  extensions_cache_.CloneDataFrom(original->isolate_,
+                                  &original->extensions_cache_, isolate_);
+}
+
+void SourceCodeCache::CloneDataFrom(Isolate* original_isolate,
+                                    SourceCodeCache* original,
+                                    Isolate* clone_isolate) {
+  type_ = original->type_;
+  auto rebase =
+      [original_cage = original_isolate->isolate_group()->GetPtrComprCage(),
+       current_cage =
+           clone_isolate->isolate_group()->GetPtrComprCage()](Address address) {
+        return original_cage->Rebase(address, current_cage);
+      };
+  Address original_cache_address = original->cache_.ptr();
+  Tagged<FixedArray> cloned_cache = Cast<FixedArray>(
+      HeapObject::FromAddress(rebase(original_cache_address) - kHeapObjectTag));
+  cache_ = std::move(cloned_cache);
+}
+#endif
+
 void Bootstrapper::Initialize(bool create_heap_objects) {
   extensions_cache_.Initialize(isolate_, create_heap_objects);
 }
