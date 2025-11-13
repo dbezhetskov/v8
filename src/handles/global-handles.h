@@ -70,6 +70,12 @@ class V8_EXPORT_PRIVATE GlobalHandles final {
   explicit GlobalHandles(Isolate* isolate);
   ~GlobalHandles();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CopyStateFrom(GlobalHandles* original);
+
+  Address* FindGlobalHandleLocation(Address value);
+#endif
+
   // Creates a new global handle that is alive until Destroy is called.
   IndirectHandle<Object> Create(Tagged<Object> value);
   IndirectHandle<Object> Create(Address value);
@@ -213,6 +219,10 @@ class EternalHandles final {
   void PostGarbageCollectionProcessing();
 
   size_t handles_count() const { return size_; }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CopyStateFrom(EternalHandles* original);
+#endif
 
  private:
   static const int kInvalidIndex = -1;

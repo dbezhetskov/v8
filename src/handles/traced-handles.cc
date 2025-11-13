@@ -845,4 +845,10 @@ bool TracedHandles::IsValidInUseNode(const Address* location) {
 
 bool TracedHandles::HasYoung() const { return !young_blocks_.empty(); }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void TracedHandles::CopyStateFrom(TracedHandles* original) {
+  DCHECK(original->blocks_.empty());
+}
+#endif
+
 }  // namespace v8::internal
