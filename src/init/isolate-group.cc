@@ -373,12 +373,29 @@ IsolateGroup* IsolateGroup::Clone() {
 #endif
 }
 
+void IsolateGroup::SetReadOnlyPermissionForSandbox() {
+  DCHECK(sandbox()->page_allocator()->SetPermissions(
+      reinterpret_cast<void*>(sandbox()->base()), sandbox()->size(),
+      PageAllocator::kRead));
+}
+
 void IsolateGroup::Release() {
   DCHECK_LT(0, reference_count_.load());
 
   if (--reference_count_ == 0) {
     delete this;
   }
+}
+
+void IsolateGroup::Freeze() {
+  for (Isolate* isolate : isolates_) {
+    isolate->Enter();
+    isolate->Freeze(true);
+    isolate->Exit();
+  }
+
+  // Protect the original sandbox from modifications.
+  SetReadOnlyPermissionForSandbox();
 }
 
 namespace {

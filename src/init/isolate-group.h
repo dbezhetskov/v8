@@ -207,6 +207,8 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
 
   IsolateGroup* Clone();
 
+  void SetReadOnlyPermissionForSandbox();
+
   // Obtain a fresh reference on the isolate group.
   IsolateGroup* Acquire() {
     DCHECK_LT(0, reference_count_.load());
@@ -217,6 +219,9 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   // Release a reference on an isolate group, possibly freeing any shared memory
   // resources.
   void Release();
+
+  // Freezes all isolates in the isolate group.
+  void Freeze();
 
   v8::PageAllocator* page_allocator() const { return page_allocator_; }
   v8::PageAllocator* read_only_page_allocator() const {

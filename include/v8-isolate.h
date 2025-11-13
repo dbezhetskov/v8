@@ -270,7 +270,11 @@ class V8_EXPORT IsolateGroup {
   V8_INLINE bool SandboxContains(void* pointer) const { return true; }
 #endif
 
+  void Freeze();
+
   IsolateGroup Clone();
+
+  void SetReadOnlyPermissionForSandbox();
 
  private:
   friend class Isolate;
