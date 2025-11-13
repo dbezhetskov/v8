@@ -6188,6 +6188,574 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   return true;
 }
 
+bool Isolate::InitClone(Isolate* original) {
+  TRACE_ISOLATE(init);
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+  CHECK_EQ(V8HeapCompressionScheme::base(), cage_base());
+#endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+
+  time_millis_at_init_ = original->time_millis_at_init_;
+
+  task_runner_ = V8::GetCurrentPlatform()->GetForegroundTaskRunner(
+      reinterpret_cast<v8::Isolate*>(this));
+
+  isolate_group()->AddIsolate(this);
+  Isolate* const use_shared_space_isolate =
+      isolate_group()->shared_space_isolate();
+#if DEBUG
+  is_shared_space_isolate_initialized_ = true;
+#endif  // DEBUG
+
+  CHECK_IMPLIES(is_shared_space_isolate(), V8_CAN_CREATE_SHARED_HEAP_BOOL);
+
+  force_slow_path_ = v8_flags.force_slow_path;
+
+  flush_denormals_ = base::FPU::GetFlushDenormals();
+
+  has_fatal_error_ = false;
+
+  // The initialization process does not handle memory exhaustion.
+  AlwaysAllocateScope always_allocate(heap());
+
+  // We need to initialize code_pages_ before any on-heap code is allocated to
+  // make sure we record all code allocations.
+  InitializeCodeRanges();
+
+  compilation_cache_ = new CompilationCache(this);
+  compilation_cache_->InitializeClone(original->compilation_cache_);
+  descriptor_lookup_cache_ = new DescriptorLookupCache();
+  global_handles_ = new GlobalHandles(this);
+  eternal_handles_ = new EternalHandles();
+  bootstrapper_ = new Bootstrapper(this);
+  handle_scope_implementer_ = new HandleScopeImplementer(this);
+  load_stub_cache_ = new StubCache(this);
+  store_stub_cache_ = new StubCache(this);
+  define_own_stub_cache_ = new StubCache(this);
+  materialized_object_store_ = new MaterializedObjectStore(this);
+  regexp_stack_ = RegExpStack::New();
+  isolate_data()->set_regexp_static_result_offsets_vector(
+      jsregexp_static_offsets_vector());
+  date_cache_ = new DateCache();
+  interpreter_ = new interpreter::Interpreter(this);
+  bigint_processor_ = bigint::Processor::New(new BigIntPlatform(this));
+
+  if (is_shared_space_isolate()) {
+    global_safepoint_ = std::make_unique<GlobalSafepoint>(this);
+  }
+
+  if (v8_flags.lazy_compile_dispatcher) {
+    lazy_compile_dispatcher_ = std::make_unique<LazyCompileDispatcher>(
+        this, V8::GetCurrentPlatform(), v8_flags.stack_size);
+  }
+#ifdef V8_ENABLE_SPARKPLUG
+  baseline_batch_compiler_ = new baseline::BaselineBatchCompiler(this);
+#endif  // V8_ENABLE_SPARKPLUG
+#ifdef V8_ENABLE_MAGLEV
+  maglev_concurrent_dispatcher_ = new maglev::MaglevConcurrentDispatcher(this);
+#endif  // V8_ENABLE_MAGLEV
+
+#if USE_SIMULATOR
+  simulator_data_ = new SimulatorData;
+#endif
+
+  // Enable logging before setting up the heap
+  v8_file_logger_->SetUp(this);
+
+  metrics_recorder_ = std::make_shared<metrics::Recorder>();
+
+  {
+    // Ensure that the thread has a valid stack guard.  The v8::Locker object
+    // will ensure this too, but we don't have to use lockers if we are only
+    // using one thread.
+    ExecutionAccess lock(this);
+    stack_guard()->InitThread(lock);
+  }
+
+  // Create LocalIsolate/LocalHeap for the main thread and set state to Running.
+  main_thread_local_isolate_.reset(new LocalIsolate(this, ThreadKind::kMain));
+
+  {
+    IgnoreLocalGCRequests ignore_gc_requests(heap());
+    main_thread_local_heap()->Unpark();
+  }
+
+  // Requires a LocalHeap to be set up to register a GC epilogue callback.
+  inner_pointer_to_code_cache_ = new InnerPointerToCodeCache(this);
+
+#if V8_ENABLE_WEBASSEMBLY
+  wasm_code_look_up_cache_ = new wasm::WasmCodeLookupCache;
+#endif  // V8_ENABLE_WEBASSEMBLY
+
+  // Lock clients_mutex_ in order to prevent shared GCs from other clients
+  // during deserialization.
+  std::optional<base::RecursiveMutexGuard> clients_guard;
+
+  if (use_shared_space_isolate && !is_shared_space_isolate()) {
+    clients_guard.emplace(
+        &use_shared_space_isolate->global_safepoint()->clients_mutex_);
+    use_shared_space_isolate->global_safepoint()->AppendClient(this);
+  }
+
+  shared_space_isolate_ = use_shared_space_isolate;
+
+  isolate_data_.is_shared_space_isolate_flag_ = is_shared_space_isolate();
+  isolate_data_.uses_shared_heap_flag_ = has_shared_space();
+
+  if (use_shared_space_isolate && !is_shared_space_isolate() &&
+      use_shared_space_isolate->heap()
+          ->incremental_marking()
+          ->IsMajorMarking()) {
+    heap_.SetIsMarkingFlag(true);
+  }
+
+  // Set up the object heap.
+  DCHECK(!heap_.HasBeenSetUp());
+  heap_.SetUpClone(main_thread_local_heap(), original->heap());
+  InitializeIsShortBuiltinCallsEnabled();
+#ifdef V8_ENABLE_SANDBOX
+  auto trusted_cage_rebase =
+      [original_trusted_cage =
+           original->isolate_group()->GetTrustedPtrComprCage(),
+       cloned_trusted_cage = isolate_group()->GetTrustedPtrComprCage()](
+          Address trusted_object_pointer) {
+        return original_trusted_cage->Rebase(trusted_object_pointer,
+                                             cloned_trusted_cage);
+      };
+#endif
+
+#ifdef V8_COMPRESS_POINTERS
+  auto ept_rebase =
+      [original_pointer_cage = original->isolate_group()->GetPtrComprCage(),
+       original_code_cage = original->isolate_group()->GetCodeRange(),
+       original_trust_cage =
+           original->isolate_group()->GetTrustedPtrComprCage()](
+          Address external_pointer) {
+        DCHECK(!original_pointer_cage->Contains(external_pointer));
+        DCHECK(!original_code_cage->Contains(external_pointer));
+        DCHECK(!original_trust_cage->Contains(external_pointer));
+        return external_pointer;
+      };
+#endif
+  {
+    // Must be done before deserializing RO space since the deserialization
+    // process refers to these data structures.
+    isolate_data_.external_reference_table()->InitIsolateIndependent(
+        isolate_group()->external_ref_table());
+#ifdef V8_COMPRESS_POINTERS
+    external_pointer_table().Initialize();
+
+    external_pointer_table().InitializeSpace(
+        heap()->read_only_external_pointer_space());
+    external_pointer_table().AttachSpaceToReadOnlySegments(
+        heap()->read_only_external_pointer_space());
+    external_pointer_table().InitializeSpace(
+        heap()->young_external_pointer_space());
+    external_pointer_table().InitializeSpace(
+        heap()->old_external_pointer_space());
+    external_pointer_table().CloneSpaceFrom(
+        &original->external_pointer_table(),
+        original->heap()->old_external_pointer_space(),
+        heap()->old_external_pointer_space(), ept_rebase);
+    external_pointer_table().CloneSpaceFrom(
+        &original->external_pointer_table(),
+        original->heap()->young_external_pointer_space(),
+        heap()->young_external_pointer_space(), ept_rebase);
+
+    cpp_heap_pointer_table().Initialize();
+    cpp_heap_pointer_table().InitializeSpace(heap()->cpp_heap_pointer_space());
+#endif  // V8_COMPRESS_POINTERS
+
+#ifdef V8_ENABLE_SANDBOX
+    trusted_pointer_table().Initialize();
+    trusted_pointer_table().InitializeSpace(heap()->trusted_pointer_space());
+    trusted_pointer_table().CloneSpaceFrom(
+        &original->trusted_pointer_table(),
+        original->heap()->trusted_pointer_space(),
+        heap()->trusted_pointer_space(), trusted_cage_rebase);
+
+#endif  // V8_ENABLE_SANDBOX
+  }
+
+  {
+    // LocalHeap initialization requires the TLS variable to be set already.
+    // However, we can't move SetIsolateThreadLocals here because the marking
+    // barrier isn't setup yet.
+    SetCurrentLocalHeapScope local_heap_scope(this);
+    isolate_group()->SetupReadOnlyHeapClone(this, original);
+
+    // Rebase read-only roots.
+    for (RootIndex i = RootIndex::kFirstRoot; i != RootIndex::kRootListLength;
+         ++i) {
+      if (RootsTable::IsReadOnly(i)) {
+        // They are initialized inside SetupReadOnlyHeapClone.
+        continue;
+      }
+
+      const RootsTable& original_ro_table = original->isolate_data()->roots();
+      RootsTable& cloned_ro_table = isolate_data()->roots();
+      if (auto* original_trusted_cage =
+              original->isolate_group()->GetTrustedPtrComprCage();
+          original_trusted_cage->Contains(original_ro_table[i])) {
+        // Trusted roots use their own trusted cage.
+        cloned_ro_table[i] = original_trusted_cage->Rebase(
+            original_ro_table[i], isolate_group()->GetTrustedPtrComprCage());
+        continue;
+      }
+
+      if (auto* original_pointer_cage =
+              original->isolate_group()->GetPtrComprCage();
+          original_pointer_cage->Contains(original_ro_table[i])) {
+        cloned_ro_table[i] = original_pointer_cage->Rebase(
+            original_ro_table[i], isolate_group()->GetPtrComprCage());
+        continue;
+      }
+
+      cloned_ro_table[i] = original_ro_table[i];
+    }
+
+    heap_.SetUpSpacesClone(original->heap());
+  }
+
+  // Need to do this after setupping heap spaces.
+  global_handles_->CopyStateFrom(original->global_handles());
+  traced_handles_.CopyStateFrom(original->traced_handles());
+  eternal_handles_->CopyStateFrom(original->eternal_handles());
+
+  DCHECK_EQ(this, Isolate::Current());
+  PerIsolateThreadData* const current_data = CurrentPerIsolateThreadData();
+  DCHECK_EQ(current_data->isolate(), this);
+  SetIsolateThreadLocals(this, current_data);
+
+  if (OwnsStringTables()) {
+    string_table_ =
+        std::unique_ptr<StringTable>(original->string_table_->Clone(this));
+    string_forwarding_table_ = std::unique_ptr<StringForwardingTable>(
+        original->string_forwarding_table_->Clone(this));
+  } else {
+    // Only refer to shared string table after attaching to the shared isolate.
+    DCHECK(has_shared_space());
+    DCHECK(!is_shared_space_isolate());
+    DCHECK_NOT_NULL(string_table());
+    DCHECK_NOT_NULL(string_forwarding_table());
+  }
+
+#ifdef V8_EXTERNAL_CODE_SPACE
+  {
+    VirtualMemoryCage* code_cage;
+    if (heap_.code_range()) {
+      code_cage = heap_.code_range();
+    } else {
+      CHECK(jitless_);
+      // In jitless mode the code space pages will be allocated in the main
+      // pointer compression cage.
+      code_cage = isolate_group_->GetPtrComprCage();
+    }
+    code_cage_base_ = ExternalCodeCompressionScheme::PrepareCageBaseAddress(
+        code_cage->base());
+    if (COMPRESS_POINTERS_IN_MULTIPLE_CAGES_BOOL) {
+      // .. now that it's available, initialize the thread-local base.
+      ExternalCodeCompressionScheme::InitBase(code_cage_base_);
+    }
+    CHECK_EQ(ExternalCodeCompressionScheme::base(), code_cage_base_);
+
+    // Ensure that ExternalCodeCompressionScheme is applicable to all objects
+    // stored in the code cage.
+    using ComprScheme = ExternalCodeCompressionScheme;
+    Address base = code_cage->base() + kHeapObjectTag;
+    Address last = base + code_cage->size() - kTaggedSize;
+    Address upper_bound = base + kPtrComprCageReservationSize - kTaggedSize;
+    PtrComprCageBase code_cage_base{code_cage_base_};
+    CHECK_EQ(base,
+             ComprScheme::DecompressTagged(ComprScheme::CompressAny(base)));
+    CHECK_EQ(last,
+             ComprScheme::DecompressTagged(ComprScheme::CompressAny(last)));
+    CHECK_EQ(upper_bound, ComprScheme::DecompressTagged(
+                              ComprScheme::CompressAny(upper_bound)));
+  }
+#endif  // V8_EXTERNAL_CODE_SPACE
+
+  isolate_data_.external_reference_table()->Init(this);
+
+#ifdef V8_COMPRESS_POINTERS
+  if (owns_shareable_data()) {
+    isolate_data_.shared_external_pointer_table_ = new ExternalPointerTable();
+    shared_external_pointer_space_ = new ExternalPointerTable::Space();
+    shared_external_pointer_table().Initialize();
+    shared_external_pointer_table().InitializeSpace(
+        shared_external_pointer_space());
+    shared_external_pointer_table().CloneSpaceFrom(
+        &original->shared_external_pointer_table(),
+        original->shared_external_pointer_space(),
+        shared_external_pointer_space(), ept_rebase);
+  } else {
+    DCHECK(has_shared_space());
+    isolate_data_.shared_external_pointer_table_ =
+        shared_space_isolate()->isolate_data_.shared_external_pointer_table_;
+    shared_external_pointer_space_ =
+        shared_space_isolate()->shared_external_pointer_space_;
+  }
+#endif  // V8_COMPRESS_POINTERS
+
+#ifdef V8_ENABLE_SANDBOX
+  isolate_group()->code_pointer_table()->InitializeSpace(
+      heap()->code_pointer_space());
+
+  auto code_cage_rebase = [original_code_cage =
+                               original->isolate_group()->GetCodeRange(),
+                           cloned_code_cage = isolate_group()->GetCodeRange()](
+                              Address original_entrypoint) {
+    return original_code_cage->Rebase(original_entrypoint, cloned_code_cage);
+  };
+  auto pointer_and_trusted_cage_remapping =
+      [original_cage = original->isolate_group()->GetPtrComprCage(),
+       cloned_cage = isolate_group()->GetPtrComprCage(),
+       trusted_cage_rebase](Address original_code_object) {
+        if (original_cage->Contains(original_code_object)) {
+          return original_cage->Rebase(original_code_object, cloned_cage);
+        }
+
+        return trusted_cage_rebase(original_code_object);
+      };
+  isolate_group()->code_pointer_table()->CloneSpaceFrom(
+      original->isolate_group()->code_pointer_table(),
+      original->heap()->code_pointer_space(), heap()->code_pointer_space(),
+      code_cage_rebase, pointer_and_trusted_cage_remapping);
+
+  if (owns_shareable_data()) {
+    isolate_data_.shared_trusted_pointer_table_ = new TrustedPointerTable();
+    shared_trusted_pointer_space_ = new TrustedPointerTable::Space();
+    shared_trusted_pointer_table().Initialize();
+    shared_trusted_pointer_table().InitializeSpace(
+        shared_trusted_pointer_space());
+    shared_trusted_pointer_table().CloneSpaceFrom(
+        &original->shared_trusted_pointer_table(),
+        original->shared_trusted_pointer_space(),
+        shared_trusted_pointer_space(), trusted_cage_rebase);
+  } else {
+    DCHECK(has_shared_space());
+    isolate_data_.shared_trusted_pointer_table_ =
+        shared_space_isolate()->isolate_data_.shared_trusted_pointer_table_;
+    shared_trusted_pointer_space_ =
+        shared_space_isolate()->shared_trusted_pointer_space_;
+  }
+
+#endif  // V8_ENABLE_SANDBOX
+
+#ifdef V8_EXTERNAL_CODE_SPACE
+  // There are code object inside code space that have embedded absolute
+  // addreses into the original trusted cage, like ByteCodeArray. Since we have
+  // a new trusted cage we update those addresses here.
+  heap_.RebaseAbsolutePointersToTrustedCage(
+      original->isolate_group()->GetTrustedPtrComprCage());
+#endif
+
+  isolate_group()->js_dispatch_table()->InitializeSpace(
+      heap()->js_dispatch_table_space());
+
+#if V8_ENABLE_WEBASSEMBLY
+  wasm::GetWasmEngine()->AddIsolate(this);
+  // Initialize the central stack for JSPI/WasmFX:
+  wasm::StackMemory* stack(wasm::StackMemory::GetCentralStackView(this));
+  stack->jmpbuf()->state = wasm::JumpBuffer::Active;
+  this->wasm_stacks().emplace_back(stack);
+  stack->set_index(0);
+  isolate_data_.set_active_stack(wasm_stacks()[0].get());
+  if (v8_flags.trace_wasm_stack_switching) {
+    PrintF("Set up central stack object (limit: %p, base: %p)\n",
+           stack->jslimit(), reinterpret_cast<void*>(stack->base()));
+  }
+#endif  // V8_ENABLE_WEBASSEMBLY
+
+#if defined(V8_ENABLE_ETW_STACK_WALKING)
+  if (v8_flags.enable_etw_stack_walking ||
+      v8_flags.enable_etw_by_custom_filter_only) {
+    ETWJITInterface::AddIsolate(this);
+  }
+#endif  // defined(V8_ENABLE_ETW_STACK_WALKING)
+
+  if (setup_delegate_ == nullptr) {
+    setup_delegate_ = new SetupIsolateDelegate;
+  }
+
+  if (!v8_flags.inline_new) heap_.DisableInlineAllocation();
+
+  if (!setup_delegate_->SetupHeap(this, false)) {
+    V8::FatalProcessOutOfMemory(this, "heap object creation");
+  }
+
+  InitializeThreadLocal();
+
+  // Profiler has to be created after ThreadLocal is initialized
+  // because it makes use of interrupts.
+  tracing_cpu_profiler_.reset(new TracingCpuProfilerImpl(this));
+
+  bootstrapper_->CloneDataFrom(original->bootstrapper_);
+  setup_delegate_->SetupBuiltins(this, false);
+
+  if ((v8_flags.trace_turbo || v8_flags.trace_turbo_graph ||
+       v8_flags.turbo_profiling) &&
+      !v8_flags.concurrent_turbo_tracing) {
+    PrintF("Concurrent recompilation has been disabled for tracing.\n");
+  } else if (OptimizingCompileDispatcher::Enabled()) {
+    optimizing_compile_dispatcher_ = new OptimizingCompileDispatcher(
+        this, isolate_group_->optimizing_compile_task_executor());
+  }
+
+  // Initialize before deserialization since collections may occur,
+  // clearing/updating ICs (and thus affecting tiering decisions).
+  tiering_manager_ = new TieringManager(this);
+
+  // Rebase startup and shared object caches.
+  {
+    // Initialize startup and shared object caches.
+    auto* original_cage = original->isolate_group()->GetPtrComprCage();
+    auto* cloned_cage = isolate_group()->GetPtrComprCage();
+    startup_object_cache_.reserve(original->startup_object_cache()->size());
+    for (Tagged<Object> original_obj : *original->startup_object_cache()) {
+      startup_object_cache_.push_back(Tagged<Object>(
+          original_cage->Rebase(original_obj.ptr(), cloned_cage)));
+    }
+
+    shared_heap_object_cache_.reserve(
+        original->shared_heap_object_cache()->size());
+    for (Tagged<Object> original_obj : *original->shared_heap_object_cache()) {
+      shared_heap_object_cache_.push_back(Tagged<Object>(
+          original_cage->Rebase(original_obj.ptr(), cloned_cage)));
+    }
+  }
+
+  // Copy and rebase JS dispatch table.
+  {
+    CloneBuiltinTable(original);
+    heap()->set_native_contexts_list(ReadOnlyRoots(this).undefined_value());
+    if (heap()->allocation_sites_list() == Smi::zero()) {
+      heap()->set_allocation_sites_list(ReadOnlyRoots(this).undefined_value());
+    }
+    heap()->set_dirty_js_finalization_registries_list(
+        ReadOnlyRoots(this).undefined_value());
+    heap()->set_dirty_js_finalization_registries_list_tail(
+        ReadOnlyRoots(this).undefined_value());
+    builtins_.MarkInitialized();
+
+    auto entrypoint_remapping =
+        [original_code_cage = original->isolate_group()->GetCodeRange(),
+         cloned_code_cage =
+             isolate_group()->GetCodeRange()](Address original_entrypoint) {
+          if (!original_code_cage->Contains(original_entrypoint)) {
+            // It is a pointer to some C++ function.
+            return original_entrypoint;
+          }
+          return original_code_cage->Rebase(original_entrypoint,
+                                            cloned_code_cage);
+        };
+    isolate_group()->js_dispatch_table()->CloneSpaceFrom(
+        original->isolate_group()->js_dispatch_table(),
+        original->heap()->js_dispatch_table_space(),
+        heap()->js_dispatch_table_space(), entrypoint_remapping,
+        pointer_and_trusted_cage_remapping);
+  }
+
+  InitializeBuiltinJSDispatchTable();
+  if (DEBUG_BOOL) VerifyStaticRoots();
+  load_stub_cache_->Initialize();
+  store_stub_cache_->Initialize();
+  define_own_stub_cache_->Initialize();
+  interpreter_->Initialize();
+  heap()->complete_deserialization();
+
+  delete setup_delegate_;
+  setup_delegate_ = nullptr;
+
+  Builtins::InitializeIsolateDataTables(this);
+
+  // Extra steps in the logger after the heap has been set up.
+  v8_file_logger_->LateSetup(this);
+
+  if (v8_flags.print_builtin_code) builtins()->PrintBuiltinCode();
+  if (v8_flags.print_builtin_size) builtins()->PrintBuiltinSize();
+
+  // Finish initialization of ThreadLocal after deserialization is done.
+  clear_exception();
+  clear_pending_message();
+
+  // Quiet the heap NaN if needed on target platform.
+  Assembler::QuietNaN(ReadOnlyRoots(this).nan_value());
+
+  if (v8_flags.trace_turbo) {
+    // Create an empty file.
+    std::ofstream(GetTurboCfgFileName(this).c_str(), std::ios_base::trunc);
+  }
+
+  isolate_data_.continuation_preserved_embedder_data_ =
+      *factory()->undefined_value();
+
+  {
+    HandleScope scope(this);
+    ast_string_constants_ = new AstStringConstants(this, HashSeed(this));
+  }
+
+  // TODO(dbezhetskov): should be false.
+  initialized_from_snapshot_ = true;
+
+  if (v8_flags.stress_sampling_allocation_profiler > 0) {
+    uint64_t sample_interval = v8_flags.stress_sampling_allocation_profiler;
+    int stack_depth = 128;
+    v8::HeapProfiler::SamplingFlags sampling_flags =
+        v8::HeapProfiler::SamplingFlags::kSamplingForceGC;
+    heap()->heap_profiler()->StartSamplingHeapProfiler(
+        sample_interval, stack_depth, sampling_flags);
+  }
+
+  if (v8_flags.harmony_struct) {
+    // Initialize or get the struct type registry shared by all isolates.
+    if (is_shared_space_isolate()) {
+      shared_struct_type_registry_ =
+          std::make_unique<SharedStructTypeRegistry>();
+    } else {
+      DCHECK_NOT_NULL(shared_struct_type_registry());
+    }
+  }
+
+#ifdef V8_ENABLE_WEBASSEMBLY
+#if V8_STATIC_ROOTS_BOOL
+  // Protect the payload of wasm null.
+  if (!page_allocator()->DecommitPages(
+          reinterpret_cast<void*>(factory()->wasm_null()->payload()),
+          WasmNull::kPayloadSize)) {
+    V8::FatalProcessOutOfMemory(this, "decommitting WasmNull payload");
+  }
+  if (v8_flags.unmap_holes) {
+// Protect the payload of each hole.
+#define UNMAP_HOLE(CamelName, snake_name, _)                                  \
+  if (!page_allocator()->DecommitPages(                                       \
+          reinterpret_cast<void*>(&factory()->snake_name()->payload_),        \
+          Hole::kPayloadSize)) {                                              \
+    V8::FatalProcessOutOfMemory(this, "decommitting " #CamelName " payload"); \
+  }
+
+    HOLE_LIST(UNMAP_HOLE)
+#undef UNMAP_HOLE
+  }
+#endif  // V8_STATIC_ROOTS_BOOL
+#endif  // V8_ENABLE_WEBASSEMBLY
+
+#if defined(V8_ENABLE_ETW_STACK_WALKING)
+  if (v8_flags.enable_etw_stack_walking ||
+      v8_flags.enable_etw_by_custom_filter_only) {
+    ETWJITInterface::MaybeSetHandlerNow(this);
+  }
+#endif  // defined(V8_ENABLE_ETW_STACK_WALKING)
+
+#if defined(V8_USE_PERFETTO)
+  PerfettoLogger::RegisterIsolate(this);
+#endif  // defined(V8_USE_PERFETTO)
+
+  initialized_ = true;
+
+  return true;
+}
+
 void Isolate::Enter() {
   Isolate* current_isolate = nullptr;
   PerIsolateThreadData* current_data = CurrentPerIsolateThreadData();
@@ -8164,6 +8732,32 @@ void Isolate::PrintNumberStringCacheStats(const char* comment,
            v8_flags.double_string_cache_size.value());
   }
   PrintF("\n");
+}
+
+void Isolate::CloneBuiltinTable(Isolate* original) {
+  base::MutexGuard guard(read_only_dispatch_entries_mutex_.Pointer());
+
+  // Initialize builtin_table_ and builtin_entry_table_.
+  const auto& original_builtin_table = original->isolate_data()->builtin_table_;
+  const auto& original_builtin_entry_table =
+      original->isolate_data()->builtin_entry_table_;
+  auto* original_cage = original->isolate_group()->GetPtrComprCage();
+  auto& clone_builtin_table = isolate_data()->builtin_table_;
+  auto& clone_builtin_entry_table = isolate_data()->builtin_entry_table_;
+  auto* cloned_cage = isolate_group()->GetPtrComprCage();
+  for (size_t i = 0; i < Builtins::kBuiltinCount; ++i) {
+    clone_builtin_table[i] =
+        original_cage->Rebase(original_builtin_table[i], cloned_cage);
+
+    Address original_builtin_entry = original_builtin_entry_table[i];
+    if (original_cage->Contains(original_builtin_entry)) {
+      clone_builtin_entry_table[i] =
+          original_cage->Rebase(original_builtin_entry, cloned_cage);
+    } else {
+      // It can be an address to the C++ runtime.
+      clone_builtin_entry_table[i] = original_builtin_entry;
+    }
+  }
 }
 
 }  // namespace internal

@@ -2438,6 +2438,8 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
 
   void PrintNumberStringCacheStats(const char* comment, bool final_summary);
 
+  bool InitClone(Isolate* target);
+
  private:
   explicit Isolate(IsolateGroup* isolate_group);
   ~Isolate();
@@ -2803,6 +2805,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   void ClearEmbeddedBlob();
 
   void InitializeBuiltinJSDispatchTable();
+  void CloneBuiltinTable(Isolate* original);
 
   const uint8_t* embedded_blob_code_ = nullptr;
   uint32_t embedded_blob_code_size_ = 0;

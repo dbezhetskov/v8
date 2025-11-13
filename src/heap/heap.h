@@ -785,6 +785,11 @@ class Heap final {
 
   bool deserialization_complete() const { return deserialization_complete_; }
 
+  void complete_deserialization() {
+    DCHECK(!deserialization_complete_);
+    deserialization_complete_ = true;
+  }
+
   // We can only invoke Safepoint() on the main thread local heap after
   // deserialization is complete. Before that, main_thread_local_heap_ might be
   // null.
