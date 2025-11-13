@@ -125,6 +125,10 @@ void ExternalPointerTableEntry::Mark() {
   USE(success);
 }
 
+bool ExternalPointerTableEntry::IsMarked() const {
+  return payload_.load().HasMarkBitSet();
+}
+
 void ExternalPointerTableEntry::MakeEvacuationEntry(Address handle_location) {
   Payload new_payload(handle_location, kExternalPointerEvacuationEntryTag);
   payload_.store(new_payload, std::memory_order_relaxed);
@@ -169,6 +173,15 @@ void ExternalPointerTableEntry::CopyFrom(const ExternalPointerTableEntry& src) {
 #if defined(LEAK_SANITIZER)
   raw_pointer_for_lsan_ = src.raw_pointer_for_lsan_;
 #endif  // LEAK_SANITIZER
+}
+
+template <typename MappingFunction>
+void ExternalPointerTableEntry::Remap(const ExternalPointerTableEntry& original,
+                                      MappingFunction mapping) {
+  const ExternalPointerTag tag = original.GetExternalPointerTag();
+  const Address original_pointer = original.GetExternalPointer(tag);
+  const Address remapped_pointer = mapping(original_pointer);
+  MakeExternalPointerEntry(remapped_pointer, tag, original.IsMarked());
 }
 
 Address ExternalPointerTable::Get(ExternalPointerHandle handle,
@@ -404,6 +417,22 @@ void ExternalPointerTable::FreeManagedResourceIfPresent(uint32_t entry_index) {
                    resource->ept_entry_ == IndexToHandle(entry_index));
     resource->ept_entry_ = kNullExternalPointerHandle;
   }
+}
+
+template <typename MappingFunction>
+void ExternalPointerTable::CloneSpaceFrom(ExternalPointerTable* original,
+                                          Space* original_space,
+                                          Space* destination_space,
+                                          MappingFunction mapping) {
+  CloneSegmentsData(original, original_space, destination_space);
+  original->IterateEntriesIn(
+      original_space, [this, original, mapping](uint32_t index) {
+        const ExternalPointerTableEntry& original_entry = original->at(index);
+        if (!original_entry.payload_.load().ContainsPointer()) {
+          return;
+        }
+        at(index).Remap(original_entry, mapping);
+      });
 }
 
 }  // namespace internal

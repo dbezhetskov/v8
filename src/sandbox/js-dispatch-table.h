@@ -115,6 +115,12 @@ struct JSDispatchEntry {
  private:
   friend class JSDispatchTable;
 
+  template <typename EntrypointMappingFunction,
+            typename CodeObjectMappingFunction>
+  void Remap(const JSDispatchEntry& original,
+             EntrypointMappingFunction entrypoint_mapping,
+             CodeObjectMappingFunction code_mapping);
+
   // The first word contains the pointer to the (executable) entrypoint.
   std::atomic<Address> entrypoint_;
 
@@ -280,6 +286,13 @@ class V8_EXPORT_PRIVATE JSDispatchTable
   // Returns the number of live entries after sweeping.
   template <typename Callback>
   uint32_t Sweep(Space* space, Counters* counters, Callback callback);
+
+  template <typename EntrypointMappingFunction,
+            typename CodeObjectMappingFunction>
+  void CloneSpaceFrom(JSDispatchTable* original, Space* original_space,
+                      Space* destination_space,
+                      EntrypointMappingFunction entrypoint_mapping,
+                      CodeObjectMappingFunction code_mapping);
 
   // Iterate over all active entries in the given space.
   //

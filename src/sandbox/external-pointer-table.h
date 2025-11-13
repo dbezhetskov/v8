@@ -105,6 +105,9 @@ struct ExternalPointerTableEntry {
   // Mark this entry as alive during table garbage collection.
   inline void Mark();
 
+  // Test whether this entry is currently marked as alive.
+  inline bool IsMarked() const;
+
   static constexpr bool IsWriteProtected = false;
 
  private:
@@ -198,6 +201,10 @@ struct ExternalPointerTableEntry {
    private:
     Address encoded_word_;
   };
+
+  template <typename MappingFunction>
+  void Remap(const ExternalPointerTableEntry& original,
+             MappingFunction mapping);
 
   inline Payload GetRawPayload() {
     return payload_.load(std::memory_order_relaxed);
@@ -349,6 +356,10 @@ class V8_EXPORT_PRIVATE ExternalPointerTable
     // Not atomic.  Mutators and concurrent marking must be paused.
     void AssertEmpty() { CHECK(segments_.empty()); }
   };
+
+  template <typename MappingFunction>
+  void CloneSpaceFrom(ExternalPointerTable* original, Space* original_space,
+                      Space* destination_space, MappingFunction mapping);
 
   // Initializes all slots in the RO space from pre-existing artifacts.
   void SetUpFromReadOnlyArtifacts(Space* read_only_space,

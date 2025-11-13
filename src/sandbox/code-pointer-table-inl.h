@@ -98,6 +98,22 @@ bool CodePointerTableEntry::IsMarked() const {
   return value & kMarkingBit;
 }
 
+template <typename EntrypointMappingFunction,
+          typename CodeObjectMappingFunction>
+void CodePointerTableEntry::Remap(const CodePointerTableEntry& original,
+                                  EntrypointMappingFunction entrypoint_mapping,
+                                  CodeObjectMappingFunction code_mapping) {
+  CFIMetadataWriteScope write_scope("CodePointerTable write");
+  const Address original_code_object = original.code_.load();
+  const CodeEntrypointTag tag = base::bit_cast<CodeEntrypointTag>(
+      original.entrypoint_.load() & kFreeCodePointerTableEntryTag);
+  const Address original_entrypoint = original.GetEntrypoint(tag);
+  const Address remapped_code_object = code_mapping(original_code_object);
+  const Address remapped_entrypoint = entrypoint_mapping(original_entrypoint);
+  MakeCodePointerEntry(remapped_code_object, remapped_entrypoint, tag,
+                       original.IsMarked());
+}
+
 Address CodePointerTable::GetEntrypoint(CodePointerHandle handle,
                                         CodeEntrypointTag tag) const {
   uint32_t index = HandleToIndex(handle);
@@ -170,6 +186,24 @@ CodePointerHandle CodePointerTable::IndexToHandle(uint32_t index) const {
   CodePointerHandle handle = index << kCodePointerHandleShift;
   DCHECK_EQ(index, handle >> kCodePointerHandleShift);
   return handle | kCodePointerHandleMarker;
+}
+
+template <typename EntrypointMappingFunction,
+          typename CodeObjectMappingFunction>
+void CodePointerTable::CloneSpaceFrom(
+    CodePointerTable* original, Space* original_space, Space* destination_space,
+    EntrypointMappingFunction entrypoint_mapping,
+    CodeObjectMappingFunction code_mapping) {
+  CloneSegmentsData(original, original_space, destination_space);
+  original->IterateEntriesIn(
+      original_space,
+      [this, original, entrypoint_mapping, code_mapping](uint32_t index) {
+        const CodePointerTableEntry& original_entry = original->at(index);
+        if (original_entry.IsFreelistEntry()) {
+          return;
+        }
+        at(index).Remap(original_entry, entrypoint_mapping, code_mapping);
+      });
 }
 
 }  // namespace internal
