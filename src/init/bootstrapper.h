@@ -36,6 +36,11 @@ class SourceCodeCache final {
   void Add(Isolate* isolate, base::Vector<const char> name,
            DirectHandle<SharedFunctionInfo> shared);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CloneDataFrom(Isolate* original_isolate, SourceCodeCache* original,
+                     Isolate* clone_isolate);
+#endif
+
  private:
   Script::Type type_;
   Tagged<FixedArray> cache_;
@@ -47,6 +52,10 @@ class Bootstrapper final {
  public:
   Bootstrapper(const Bootstrapper&) = delete;
   Bootstrapper& operator=(const Bootstrapper&) = delete;
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  void CloneDataFrom(Bootstrapper* original);
+#endif
 
   static void InitializeOncePerProcess();
 
