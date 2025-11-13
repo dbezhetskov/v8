@@ -361,5 +361,26 @@ void CompilationCache::DisableScriptAndEval() {
   Clear();
 }
 
+void CompilationCache::InitializeClone(CompilationCache* original) {
+  auto rebase =
+      [original_cage = original->isolate()->isolate_group()->GetPtrComprCage(),
+       cloned_cage =
+           isolate_->isolate_group()->GetPtrComprCage()](Address address) {
+        return original_cage->Rebase(address, cloned_cage);
+      };
+  script_.table_ = Tagged<Object>(rebase(original->script_.table_.ptr()));
+
+  eval_global_.table_ =
+      Tagged<Object>(rebase(original->eval_global_.table_.ptr()));
+  eval_contextual_.table_ =
+      Tagged<Object>(rebase(original->eval_contextual_.table_.ptr()));
+
+  reg_exp_.tables_[0] =
+      Tagged<Object>(rebase(original->reg_exp_.tables_[0].ptr()));
+  reg_exp_.tables_[1] =
+      Tagged<Object>(rebase(original->reg_exp_.tables_[1].ptr()));
+  enabled_script_and_eval_ = original->enabled_script_and_eval_;
+}
+
 }  // namespace internal
 }  // namespace v8
