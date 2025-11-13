@@ -1867,6 +1867,10 @@ class Heap final {
     ExternalStringTable(const ExternalStringTable&) = delete;
     ExternalStringTable& operator=(const ExternalStringTable&) = delete;
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+    void CopyDataFrom(ExternalStringTable* src_table, Heap* src_heap);
+#endif
+
     // Registers an external string.
     inline void AddString(Tagged<String> string);
     bool Contains(Tagged<String> string);
