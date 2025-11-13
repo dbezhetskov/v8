@@ -38,6 +38,10 @@ class StringForwardingTable {
   explicit StringForwardingTable(Isolate* isolate);
   ~StringForwardingTable();
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  std::unique_ptr<StringForwardingTable> Clone(Isolate* isolate);
+#endif
+
   inline int size() const;
   inline bool empty() const;
   // Returns the index of the added record.

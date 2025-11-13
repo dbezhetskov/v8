@@ -86,6 +86,10 @@ class StringTable::Data {
   static std::unique_ptr<Data> Resize(PtrComprCageBase cage_base,
                                       std::unique_ptr<Data> data, int capacity);
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+  static std::unique_ptr<Data> Clone(PtrComprCageBase cage_base, Data* target);
+#endif
+
   void* operator new(size_t size, int capacity);
   void* operator new(size_t size) = delete;
   void operator delete(void* description);
@@ -148,6 +152,19 @@ std::unique_ptr<StringTable::Data> StringTable::Data::Resize(
   return new_data;
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+std::unique_ptr<v8::internal::StringTable::Data> StringTable::Data::Clone(
+    PtrComprCageBase cage_base, Data* target) {
+  int capacity = target->table().capacity();
+  std::unique_ptr<Data> new_data(new (capacity) Data(capacity));
+  target->table_.RehashInto(cage_base, &new_data->table_);
+  if (target->previous_data_) {
+    new_data->previous_data_ = Clone(cage_base, target->previous_data_.get());
+  }
+  return new_data;
+}
+#endif
+
 void StringTable::Data::Print(PtrComprCageBase cage_base) const {
   OFStream os(stdout);
   os << "StringTable {" << std::endl;
@@ -166,6 +183,21 @@ StringTable::StringTable(Isolate* isolate)
 }
 
 StringTable::~StringTable() { delete data_; }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+std::unique_ptr<StringTable> StringTable::Clone(Isolate* isolate) {
+  auto cloned_table = std::make_unique<StringTable>(isolate);
+  {
+    base::MutexGuard table_write_guard(&cloned_table->write_mutex_);
+    // No need to guard data_ because it should be frozen.
+    cloned_table->data_.store(
+        StringTable::Data::Clone(isolate, data_.load(std::memory_order_relaxed))
+            .release(),
+        std::memory_order_release);
+  }
+  return cloned_table;
+}
+#endif
 
 int StringTable::Capacity() const {
   return data_.load(std::memory_order_acquire)->table().capacity();
