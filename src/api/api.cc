@@ -9682,9 +9682,15 @@ IsolateGroup& v8::IsolateGroup::operator=(IsolateGroup&& other) {
   return *this;
 }
 
+void v8::IsolateGroup::Freeze() { isolate_group_->Freeze(); }
+
 v8::IsolateGroup v8::IsolateGroup::Clone() {
   i::IsolateGroup* internal_cloned_group = isolate_group_->Clone();
   return IsolateGroup{std::move(internal_cloned_group)};
+}
+
+void v8::IsolateGroup::SetReadOnlyPermissionForSandbox() {
+  isolate_group_->SetReadOnlyPermissionForSandbox();
 }
 
 HeapProfiler* Isolate::GetHeapProfiler() {
