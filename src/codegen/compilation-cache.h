@@ -37,6 +37,7 @@ class CompilationCacheEvalOrScript {
   void Remove(DirectHandle<SharedFunctionInfo> function_info);
 
  protected:
+  friend class CompilationCache;
   Isolate* isolate() const { return isolate_; }
 
   Isolate* const isolate_;
@@ -130,6 +131,8 @@ class CompilationCacheRegExp {
   void Clear();
 
  private:
+  friend class CompilationCache;
+
   Isolate* isolate() const { return isolate_; }
 
   Isolate* const isolate_;
@@ -212,7 +215,8 @@ class V8_EXPORT_PRIVATE CompilationCache {
   void EnableScriptAndEval();
   void DisableScriptAndEval();
 
- private:
+  void InitializeClone(CompilationCache* original);
+
   explicit CompilationCache(Isolate* isolate);
   ~CompilationCache() = default;
 
