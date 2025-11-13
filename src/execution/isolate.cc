@@ -4209,6 +4209,11 @@ Isolate* Isolate::New() { return New(IsolateGroup::AcquireDefault()); }
 // static
 Isolate* Isolate::New(IsolateGroup* group) { return Allocate(group); }
 
+Isolate* Isolate::Clone() {
+  Isolate* isolate = Allocate(IsolateGroup::current());
+  return isolate;
+}
+
 // static
 Isolate* Isolate::Allocate(IsolateGroup* group) {
   // v8::V8::Initialize() must be called before creating any isolates.
