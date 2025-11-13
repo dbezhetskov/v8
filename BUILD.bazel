@@ -4426,6 +4426,13 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "cloudflare_files",
+    srcs = [
+        "src/cloudflare/main.cc",
+    ],
+)
+
 genrule(
     name = "generated_bytecode_builtins_list",
     srcs = [],
@@ -4728,6 +4735,14 @@ v8_binary(
 v8_binary(
     name = "d8",
     srcs = [":d8_files"],
+    copts = ["-Wno-implicit-fallthrough"],
+    icu_deps = [":icu/v8"],
+    noicu_deps = [":noicu/v8"],
+)
+
+v8_binary(
+    name = "cloudflare_main",
+    srcs = [":cloudflare_files"],
     copts = ["-Wno-implicit-fallthrough"],
     icu_deps = [":icu/v8"],
     noicu_deps = [":noicu/v8"],

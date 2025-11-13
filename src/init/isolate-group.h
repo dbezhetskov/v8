@@ -124,6 +124,7 @@ class PABackedSandboxedArrayBufferAllocator
 #endif  // V8_ENABLE_SANDBOX
 
 class CodeRange;
+class Heap;
 class Isolate;
 class OptimizingCompileTaskExecutor;
 class ReadOnlyHeap;
@@ -188,6 +189,11 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
                 2 * kSystemPointerSize);
 #endif  // V8_ENABLE_SANDBOX
 
+  enum class CloneMode : bool {
+    ReadOnly,
+    ReadWrite,
+  };
+
   // InitializeOncePerProcess should be called early on to initialize the
   // process-wide group.
   static IsolateGroup* AcquireDefault() { return GetDefault()->Acquire(); }
@@ -212,6 +218,9 @@ class V8_EXPORT_PRIVATE IsolateGroup final {
   IsolateGroup* Clone();
 
   void SetReadOnlyPermissionForSandbox();
+
+  // Only works for clones.
+  void ResetCloneToOriginalState();
 
   // Obtain a fresh reference on the isolate group.
   IsolateGroup* Acquire() {

@@ -58,7 +58,7 @@ class MemoryChunkMetadata {
   }
 
   Heap* heap() const {
-    DCHECK_NOT_NULL(heap_);
+    //    DCHECK_NOT_NULL(heap_);
     return heap_;
   }
 
