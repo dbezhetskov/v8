@@ -642,6 +642,8 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // A convenience helper that deinitializes and frees the isolate.
   static void Delete(Isolate* isolate);
 
+  Isolate* Clone();
+
   void SetUpFromReadOnlyArtifacts(ReadOnlyArtifacts* artifacts);
   void set_read_only_heap(ReadOnlyHeap* ro_heap) { read_only_heap_ = ro_heap; }
 
@@ -2421,8 +2423,12 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
       heap()->EnsureSweepingCompleted(
           Heap::SweepingForcedFinalizationMode::kUnifiedHeap);
     }
-  }
 
+    if (v8_flags.parallel_marking || v8_flags.concurrent_marking ||
+        v8_flags.concurrent_minor_ms_marking) {
+      heap()->JoinConcurrentMarkingThreads();
+    }
+  }
   static void IterateRegistersAndStackOfSimulator(
       ::heap::base::StackVisitor* visitor);
 

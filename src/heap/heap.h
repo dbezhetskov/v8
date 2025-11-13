@@ -1144,6 +1144,8 @@ class Heap final {
   // Concurrent marking API. ===================================================
   // ===========================================================================
 
+  void JoinConcurrentMarkingThreads();
+
   ConcurrentMarking* concurrent_marking() const {
     return concurrent_marking_.get();
   }
