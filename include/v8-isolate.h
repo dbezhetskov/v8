@@ -270,6 +270,8 @@ class V8_EXPORT IsolateGroup {
   V8_INLINE bool SandboxContains(void* pointer) const { return true; }
 #endif
 
+  IsolateGroup Clone();
+
  private:
   friend class Isolate;
   friend class ArrayBuffer::Allocator;
