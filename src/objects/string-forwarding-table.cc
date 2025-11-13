@@ -169,6 +169,15 @@ StringForwardingTable::~StringForwardingTable() {
   }
 }
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+std::unique_ptr<StringForwardingTable> StringForwardingTable::Clone(
+    Isolate* isolate) {
+  auto cloned_table = std::make_unique<StringForwardingTable>(isolate);
+  DCHECK_EQ(size(), 0);
+  return cloned_table;
+}
+#endif
+
 void StringForwardingTable::InitializeBlockVector() {
   BlockVector* blocks = block_vector_storage_
                             .emplace_back(std::make_unique<BlockVector>(

@@ -270,6 +270,12 @@ class V8_EXPORT IsolateGroup {
   V8_INLINE bool SandboxContains(void* pointer) const { return true; }
 #endif
 
+  void Freeze();
+
+  IsolateGroup Clone();
+
+  void SetReadOnlyPermissionForSandbox();
+
  private:
   friend class Isolate;
   friend class ArrayBuffer::Allocator;
@@ -1871,6 +1877,23 @@ class V8_EXPORT Isolate {
    * Returns the hash seed for that isolate, for testing purposes.
    */
   uint64_t GetHashSeed();
+
+  /**
+   * Materialize an already in-memory–cloned isolate.
+   *
+   * After cloning an isolate group, the heap memory of all isolates in the
+   * original group is cloned as well. However, to use a cloned isolate, you
+   * must first materialize it.
+   *
+   * Materialization constructs all metadata and the isolate’s internal
+   * structures without re-allocating/writing its memory.
+   *
+   * Supported only in a multi-sandbox configuration with pointer compression
+   * enabled.
+   *
+   */
+  static Isolate* MaterializeClone(Isolate* original,
+                                   const IsolateGroup& cloned_group);
 
   Isolate() = delete;
   ~Isolate() = delete;
