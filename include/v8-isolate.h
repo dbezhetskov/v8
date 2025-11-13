@@ -276,6 +276,10 @@ class V8_EXPORT IsolateGroup {
 
   void SetReadOnlyPermissionForSandbox();
 
+  char* GetPointerCageBase();
+
+  void ResetClone();
+
  private:
   friend class Isolate;
   friend class ArrayBuffer::Allocator;
@@ -727,6 +731,12 @@ class V8_EXPORT Isolate {
    * Initialize an Isolate previously allocated by Isolate::Allocate().
    */
   static void Initialize(Isolate* isolate, const CreateParams& params);
+
+  /**
+   * Initialize an Isolate clone.
+   */
+  static void InitializeClone(Isolate* clone_isolate, Isolate* original_isolate,
+                              const CreateParams& params);
 
   /**
    * Creates a new isolate.  Does not change the currently entered

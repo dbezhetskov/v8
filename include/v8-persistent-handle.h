@@ -35,6 +35,9 @@ V8_EXPORT internal::Address* GlobalizeReference(internal::Isolate* isolate,
                                                 internal::Address value);
 V8_EXPORT void MoveGlobalReference(internal::Address** from,
                                    internal::Address** to);
+V8_EXPORT internal::Address* FindCorrespondingGlobalHandle(
+    internal::Isolate* original_isolate, internal::Isolate* target_isolate,
+    internal::Address value);
 }  // namespace api_internal
 
 /**
@@ -363,6 +366,13 @@ class Global : public PersistentBase<T> {
   V8_INLINE Global(Isolate* isolate, Local<S> that)
       : PersistentBase<T>(
             PersistentBase<T>::New(isolate, that.template value<S>())) {}
+
+  V8_INLINE Global(Isolate* original, Isolate* clone,
+                   Global<T>* original_global)
+      : PersistentBase<T>(api_internal::FindCorrespondingGlobalHandle(
+            reinterpret_cast<internal::Isolate*>(original),
+            reinterpret_cast<internal::Isolate*>(clone),
+            original_global->ptr())) {}
 
   /**
    * Construct a Global from a PersistentBase with automatic up casting.
