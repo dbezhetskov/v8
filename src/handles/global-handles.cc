@@ -611,6 +611,40 @@ GlobalHandles::GlobalHandles(Isolate* isolate)
     : isolate_(isolate),
       regular_nodes_(std::make_unique<NodeSpace<GlobalHandles::Node>>(this)) {}
 
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void GlobalHandles::CopyStateFrom(GlobalHandles* original) {
+  auto* original_pointer_cage =
+      original->isolate()->isolate_group()->GetPtrComprCage();
+  auto* cloned_pointer_cage = isolate()->isolate_group()->GetPtrComprCage();
+
+  for (Node* node : *original->regular_nodes_) {
+    const Address object_addr = node->object().ptr();
+    if (object_addr == kGlobalHandleZapValue) {
+      continue;
+    }
+    Create(original_pointer_cage->Rebase(object_addr, cloned_pointer_cage));
+  }
+
+  for (Node* node : original->young_nodes_) {
+    const Address object_addr = node->object().ptr();
+    if (object_addr == kGlobalHandleZapValue) {
+      continue;
+    }
+    Create(original_pointer_cage->Rebase(object_addr, cloned_pointer_cage));
+  }
+}
+
+Address* GlobalHandles::FindGlobalHandleLocation(Address value) {
+  for (Node* node : *regular_nodes_) {
+    if (node->object().ptr() == value) {
+      return node->handle().location();
+    }
+  }
+  DCHECK(false);
+  return nullptr;
+}
+#endif
+
 GlobalHandles::~GlobalHandles() = default;
 
 namespace {
@@ -1040,6 +1074,13 @@ void EternalHandles::PostGarbageCollectionProcessing() {
   DCHECK_LE(last, young_node_indices_.size());
   young_node_indices_.resize(last);
 }
+
+#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
+void EternalHandles::CopyStateFrom(EternalHandles* original) {
+  DCHECK(original->young_node_indices_.empty());
+  DCHECK(original->blocks_.empty());
+}
+#endif
 
 void EternalHandles::Create(Isolate* isolate, Tagged<Object> object,
                             int* index) {
