@@ -3188,7 +3188,12 @@ void MacroAssembler::JumpIfIsInRange(Register value, unsigned lower_limit,
 }
 
 void MacroAssembler::Push(Handle<HeapObject> source) {
+#ifdef V8_COMPRESS_POINTERS
+  Move(kScratchRegister, source, RelocInfo::COMPRESSED_EMBEDDED_OBJECT);
+  DecompressTagged(kScratchRegister, kScratchRegister);
+#else
   Move(kScratchRegister, source);
+#endif
   Push(kScratchRegister);
 }
 
