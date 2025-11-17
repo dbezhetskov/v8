@@ -995,9 +995,10 @@ void CheckIsOOMError(int error) {
 
 // static
 void* OS::Allocate(void* hint, size_t size, size_t alignment,
-                   MemoryPermission access, PlatformSharedMemoryHandle handle) {
+                   MemoryPermission access,
+                   std::optional<SharedMemoryHandle> handle) {
   // File handles aren't supported.
-  DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
+  DCHECK(!handle.has_value());
 
   size_t page_size = AllocatePageSize();
   DCHECK_EQ(0, size % page_size);
@@ -1023,7 +1024,7 @@ void OS::Free(void* address, size_t size) {
 
 // static
 void* OS::AllocateShared(void* hint, size_t size, MemoryPermission permission,
-                         PlatformSharedMemoryHandle handle, uint64_t offset) {
+                         SharedMemoryHandle handle, uint64_t offset) {
   DCHECK_EQ(0, reinterpret_cast<uintptr_t>(hint) % AllocatePageSize());
   DCHECK_EQ(0, size % AllocatePageSize());
   DCHECK_EQ(0, offset % AllocatePageSize());
@@ -1142,9 +1143,9 @@ bool OS::CanReserveAddressSpace() {
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    PlatformSharedMemoryHandle handle) {
+    std::optional<SharedMemoryHandle> handle) {
   // File handles aren't supported.
-  DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
+  DCHECK(!handle.has_value());
   CHECK(CanReserveAddressSpace());
 
   size_t page_size = AllocatePageSize();
@@ -1168,16 +1169,16 @@ void OS::FreeAddressSpaceReservation(AddressSpaceReservation reservation) {
 }
 
 // static
-PlatformSharedMemoryHandle OS::CreateSharedMemoryHandleForTesting(size_t size) {
+std::optional<SharedMemoryHandle> OS::CreateSharedMemoryHandleForTesting(
+    size_t size) {
   HANDLE handle = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr,
                                     PAGE_READWRITE, 0, size, nullptr);
-  if (!handle) return kInvalidSharedMemoryHandle;
+  if (!handle) return std::nullopt;
   return SharedMemoryHandleFromFileMapping(handle);
 }
 
 // static
-void OS::DestroySharedMemoryHandle(PlatformSharedMemoryHandle handle) {
-  DCHECK_NE(kInvalidSharedMemoryHandle, handle);
+void OS::DestroySharedMemoryHandle(SharedMemoryHandle handle) {
   HANDLE file_mapping = FileMappingFromSharedMemoryHandle(handle);
   CHECK(CloseHandle(file_mapping));
 }
@@ -1409,7 +1410,7 @@ bool AddressSpaceReservation::Free(void* address, size_t size) {
 
 bool AddressSpaceReservation::AllocateShared(void* address, size_t size,
                                              OS::MemoryPermission access,
-                                             PlatformSharedMemoryHandle handle,
+                                             SharedMemoryHandle handle,
                                              uint64_t offset) {
   DCHECK(Contains(address, size));
   CHECK(MapViewOfFile3);
