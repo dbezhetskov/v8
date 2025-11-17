@@ -266,9 +266,10 @@ void OS::Initialize(const char* const gc_fake_mmap) {
 
 // static
 void* OS::Allocate(void* address, size_t size, size_t alignment,
-                   MemoryPermission access, PlatformSharedMemoryHandle handle) {
+                   MemoryPermission access,
+                   std::optional<SharedMemoryHandle> handle) {
   // File handles aren't supported.
-  DCHECK_EQ(handle, kInvalidSharedMemoryHandle);
+  DCHECK(!handle.has_value());
   PlacementMode placement =
       address != nullptr ? PlacementMode::kUseHint : PlacementMode::kAnywhere;
   return CreateAndMapVmo(*zx::vmar::root_self(), g_root_vmar_base,
@@ -283,8 +284,8 @@ void OS::Free(void* address, size_t size) {
 
 // static
 void* OS::AllocateShared(void* address, size_t size,
-                         OS::MemoryPermission access,
-                         PlatformSharedMemoryHandle handle, uint64_t offset) {
+                         OS::MemoryPermission access, SharedMemoryHandle handle,
+                         uint64_t offset) {
   PlacementMode placement =
       address != nullptr ? PlacementMode::kUseHint : PlacementMode::kAnywhere;
   zx::unowned_vmo vmo(VMOFromSharedMemoryHandle(handle));
@@ -340,7 +341,8 @@ bool OS::CanReserveAddressSpace() { return true; }
 // static
 std::optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
     void* hint, size_t size, size_t alignment, MemoryPermission max_permission,
-    PlatformSharedMemoryHandle handle) {
+    std::optional<SharedMemoryHandle> handle) {
+  DCHECK(!handle.has_value());
   DCHECK_EQ(0, reinterpret_cast<Address>(hint) % alignment);
   zx::vmar child;
   zx_vaddr_t child_addr;
@@ -362,17 +364,17 @@ void OS::FreeAddressSpaceReservation(AddressSpaceReservation reservation) {
 }
 
 // static
-PlatformSharedMemoryHandle OS::CreateSharedMemoryHandleForTesting(size_t size) {
+std::optional<SharedMemoryHandle> OS::CreateSharedMemoryHandleForTesting(
+    size_t size) {
   zx::vmo vmo;
   if (zx::vmo::create(size, 0, &vmo) != ZX_OK) {
-    return kInvalidSharedMemoryHandle;
+    return std::nullopt;
   }
   return SharedMemoryHandleFromVMO(vmo.release());
 }
 
 // static
-void OS::DestroySharedMemoryHandle(PlatformSharedMemoryHandle handle) {
-  DCHECK_NE(kInvalidSharedMemoryHandle, handle);
+void OS::DestroySharedMemoryHandle(SharedMemoryHandle handle) {
   zx_handle_t vmo = VMOFromSharedMemoryHandle(handle);
   zx_handle_close(vmo);
 }
@@ -457,7 +459,7 @@ bool AddressSpaceReservation::Free(void* address, size_t size) {
 
 bool AddressSpaceReservation::AllocateShared(void* address, size_t size,
                                              OS::MemoryPermission access,
-                                             PlatformSharedMemoryHandle handle,
+                                             SharedMemoryHandle handle,
                                              uint64_t offset) {
   DCHECK(Contains(address, size));
   zx::unowned_vmo vmo(VMOFromSharedMemoryHandle(handle));
