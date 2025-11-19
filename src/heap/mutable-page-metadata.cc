@@ -269,7 +269,7 @@ void MutablePageMetadata::CopyStateFrom(MutablePageMetadata* original_page,
 
   // Copy main thread flags.
   trusted_main_thread_flags_ = original_page->trusted_main_thread_flags_;
-  Chunk()->SetFlags(original_page->Chunk()->GetFlags());
+  DCHECK_EQ(original_page->Chunk()->GetFlags(), Chunk()->GetFlags());
 
   // Copy external_backing_store_bytes_.
   for (int i = 0; i < static_cast<int>(ExternalBackingStoreType::kNumValues);
@@ -300,6 +300,7 @@ void MutablePageMetadata::CopyBytesStatsFrom(
     MutablePageMetadata* original_page) {
   allocated_bytes_ = original_page->allocated_bytes_;
   wasted_memory_ = original_page->wasted_memory_;
+  flags_ = original_page->flags_;
 }
 #endif
 
