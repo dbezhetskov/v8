@@ -2432,6 +2432,14 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   void Freeze(bool is_frozen) {
     is_frozen_ = is_frozen;
 
+    if (IsFrozen()) {
+      heap()->FinalizeIncrementalMarkingAtomicallyIfRunning(
+          i::GarbageCollectionReason::kFrozen);
+      heap()->EnsureSweepingCompleted(
+          Heap::SweepingForcedFinalizationMode::kUnifiedHeap,
+          CompleteSweepingReason::kFreeze);
+    }
+
     if (v8_flags.parallel_marking || v8_flags.concurrent_marking ||
         v8_flags.concurrent_minor_ms_marking) {
       heap()->JoinConcurrentMarkingThreads();

@@ -248,7 +248,6 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
   v8::V8::InitializePlatform(platform.get());
   v8::V8::SetFlagsFromString("--expose-gc");
-  v8::V8::SetFlagsFromString("--memory_reducer_respects_frozen_state");
   v8::V8::SetFlagsFromString("--no-short-builtin-calls");
   v8::V8::SetFlagsFromString("--verify-heap");
   v8::V8::SetFlagsFromString("--verify-write-barriers");
