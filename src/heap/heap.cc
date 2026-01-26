@@ -6423,6 +6423,10 @@ void Heap::SetUpSpacesClone(Heap* original) {
 
   SetGetExternallyAllocatedMemoryInBytesCallback(ReturnNull);
 
+  if (new_space() || v8_flags.sticky_mark_bits) {
+    minor_gc_job_.reset(new MinorGCJob(this));
+  }
+
   if (v8_flags.stress_marking > 0) {
     stress_marking_percentage_ = NextStressMarkingLimit();
   }

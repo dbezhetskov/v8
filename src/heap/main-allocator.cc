@@ -153,7 +153,11 @@ void MainAllocator::AddAllocationObserver(AllocationObserver* observer) {
   // Adding an allocation observer may decrease the inline allocation limit, so
   // we check here that we don't have an existing LAB.
   CHECK(!allocation_counter().IsStepInProgress());
-  DCHECK(!IsLabValid());
+
+  // In case of clone heap construction LAB is already valid.
+  if (local_heap_ && !local_heap_->heap()->is_clone_heap_construction()) {
+    DCHECK(!IsLabValid());
+  }
   allocation_counter().AddAllocationObserver(observer);
 }
 
