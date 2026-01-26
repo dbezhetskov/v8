@@ -96,6 +96,11 @@ MainAllocator::MainAllocator(LocalHeap* local_heap, SpaceWithLinearArea* space,
   } else {
     extended_limit_ = original->extended_limit_;
   }
+
+  allocation_info_->FullReset(rebase(original->allocation_info().start()),
+                              rebase(original->allocation_info().top()),
+                              rebase(original->allocation_info().limit()));
+  DCHECK_EQ(original->IsLabValid(), IsLabValid());
 }
 #endif
 
