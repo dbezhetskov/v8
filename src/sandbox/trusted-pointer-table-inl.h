@@ -117,9 +117,15 @@ void TrustedPointerTableEntry::Remap(const TrustedPointerTableEntry& original,
                                      TrustedMappingFunction mapping) {
   const Payload original_payload = original.payload_.load();
   const IndirectPointerTag tag = original_payload.ExtractTag();
-  const Address original_pointer = original.GetPointer(tag);
+  const Address original_pointer = original_payload.ExtractPointerUnchecked();
   const Address remapped_pointer = mapping(original_pointer);
-  MakeTrustedPointerEntry(remapped_pointer, tag, original.IsMarked());
+  MakeTrustedPointerEntry(remapped_pointer, tag,
+                          original_payload.HasMarkBitSet());
+  if (!original_payload.HasMarkBitSet()) {
+    Unmark();
+  } else {
+    DCHECK(IsMarked());
+  }
 }
 
 Address TrustedPointerTable::Get(TrustedPointerHandle handle,
@@ -230,6 +236,9 @@ void TrustedPointerTable::CloneSpaceFrom(
           return;
         }
         at(index).Remap(original_entry, trusted_mapping);
+        DCHECK_EQ(at(index).IsMarked(), original_entry.IsMarked());
+        DCHECK_EQ(at(index).IsFreelistEntry(),
+                  original_entry.IsFreelistEntry());
       });
 }
 
