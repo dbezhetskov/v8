@@ -311,6 +311,40 @@ MarkCompactCollector::MarkCompactCollector(Heap* heap)
       sweeper_(heap_->sweeper()) {
 }
 
+MarkCompactCollector::MarkCompactCollector(Heap* heap,
+                                           MarkCompactCollector& original)
+    : heap_(heap),
+#ifdef DEBUG
+      state_(original.state_),
+#endif
+      uses_shared_heap_(heap_->isolate()->has_shared_space()),
+      is_shared_space_isolate_(heap_->isolate()->is_shared_space_isolate()),
+      marking_state_(heap_->marking_state()),
+      non_atomic_marking_state_(heap_->non_atomic_marking_state()),
+      sweeper_(heap_->sweeper()) {
+  base::MutexGuard guard(&original.mutex_);
+
+  compacting_ = original.compacting_;
+  black_allocation_ = original.black_allocation_;
+  have_code_to_deoptimize_ = original.have_code_to_deoptimize_;
+  parallel_marking_ = original.parallel_marking_;
+
+  DCHECK(original.marking_worklists_.IsEmpty());
+  DCHECK(original.weak_objects_.current_ephemerons.IsEmpty());
+
+  DCHECK_IMPLIES(original.local_marking_worklists(),
+                 original.local_marking_worklists()->IsEmpty());
+  DCHECK(original.evacuation_candidates_.empty());
+  DCHECK(original.old_space_evacuation_pages_.empty());
+  DCHECK(original.new_space_evacuation_pages_.empty());
+  DCHECK(original.aborted_evacuation_candidates_due_to_oom_.empty());
+  DCHECK(original.aborted_evacuation_candidates_due_to_flags_.empty());
+  DCHECK(original.promoted_large_pages_.empty());
+  DCHECK(original.strong_descriptor_arrays_.empty());
+
+  epoch_ = original.epoch_;
+}
+
 MarkCompactCollector::~MarkCompactCollector() = default;
 
 void MarkCompactCollector::TearDown() {

@@ -6521,12 +6521,14 @@ void Heap::SetUpClone(LocalHeap* main_thread_local_heap, Heap* target) {
 
   sweeper_.reset(new Sweeper(this));
 
-  mark_compact_collector_.reset(new MarkCompactCollector(this));
+  mark_compact_collector_.reset(
+      new MarkCompactCollector(this, *target->mark_compact_collector()));
 
   scavenger_collector_.reset(new ScavengerCollector(this));
   minor_mark_sweep_collector_.reset(new MinorMarkSweepCollector(this));
   ephemeron_remembered_set_.reset(new EphemeronRememberedSet());
 
+  DCHECK(target->incremental_marking()->IsStopped());
   incremental_marking_.reset(
       new IncrementalMarking(this, mark_compact_collector_->weak_objects()));
 

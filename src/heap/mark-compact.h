@@ -191,6 +191,7 @@ class MarkCompactCollector final {
   const Heap* heap() const { return heap_; }
 
   explicit MarkCompactCollector(Heap* heap);
+  MarkCompactCollector(Heap* heap, MarkCompactCollector& original);
   ~MarkCompactCollector();
 
  private:
