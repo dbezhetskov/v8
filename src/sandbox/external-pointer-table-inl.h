@@ -432,6 +432,7 @@ void ExternalPointerTable::CloneSpaceFrom(ExternalPointerTable* original,
           return;
         }
         at(index).Remap(original_entry, mapping);
+        DCHECK_EQ(original_entry.IsMarked(), at(index).IsMarked());
       });
 }
 

@@ -203,6 +203,7 @@ void CodePointerTable::CloneSpaceFrom(
           return;
         }
         at(index).Remap(original_entry, entrypoint_mapping, code_mapping);
+        DCHECK_EQ(original_entry.IsMarked(), at(index).IsMarked());
       });
 }
 

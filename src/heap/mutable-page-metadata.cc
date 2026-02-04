@@ -219,6 +219,8 @@ void MutablePageMetadata::ReleaseAllAllocatedMemory() {
 void MutablePageMetadata::CopyStateFrom(MutablePageMetadata* original_page,
                                         const VirtualMemoryCage* original_cage,
                                         const VirtualMemoryCage* cloned_cage) {
+  base::MutexGuard guard(mutex());
+
   // Copy slot_set_.
   for (int i = 0; i < NUMBER_OF_REMEMBERED_SET_TYPES; ++i) {
     if (!original_page->slot_set_[i]) {
@@ -266,6 +268,9 @@ void MutablePageMetadata::CopyStateFrom(MutablePageMetadata* original_page,
         TypedSlotSet::KEEP_EMPTY_CHUNKS);
     typed_slot_set_[i] = new_typed_slot_set;
   }
+
+  allocated_lab_size_ = original_page->allocated_lab_size_;
+  age_in_new_space_ = original_page->age_in_new_space_;
 
   // Copy main thread flags.
   trusted_main_thread_flags_ = original_page->trusted_main_thread_flags_;

@@ -218,12 +218,6 @@ class V8_EXPORT_PRIVATE MemoryChunk final {
     return untrusted_main_thread_flags_;
   }
 
-#ifdef V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES
-  V8_INLINE void SetFlags(MainThreadFlags flags) {
-    untrusted_main_thread_flags_ = flags;
-  }
-#endif
-
   // Emits a memory barrier. For TSAN builds the other thread needs to perform
   // MemoryChunk::SynchronizedLoad() to simulate the barrier.
   void InitializationMemoryFence();
